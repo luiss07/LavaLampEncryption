@@ -1,0 +1,479 @@
+#define SERIAL_DEBUG 1 // enable comments print in serial monitor
+
+#include "WiFi.h"
+#include "esp_camera.h"
+#include "esp_timer.h"
+#include "Arduino.h"
+#include "soc/soc.h"          // Disable brownour problems
+#include "soc/rtc_cntl_reg.h" // Disable brownour problems
+#include "driver/rtc_io.h"
+// #include <ESPAsyncWebServer.h>
+#include <SPIFFS.h>
+#include <FS.h>
+#include <TelegramBot.h>
+#include <WiFiClientSecure.h>
+// Replace with your network credentials
+const char *ssid = "";
+const char *password = "";
+const char *token = "";
+
+void capturePhotoSaveSpiffs(camera_fb_t *fb);
+bool readRGBImage(camera_fb_t *fb);
+// Create AsyncWebServer object on port 80
+WiFiClientSecure tg_client;
+// AsyncWebServer server(80);
+TelegramBot bot = TelegramBot(token, tg_client);
+boolean takeNewPhoto = false;
+
+// Photo File Name to save in SPIFFS
+#define FILE_PHOTO "/photo.jpeg"
+#define PHOTO_PATH "/spiffs/photo.jpeg"
+
+// camera module pins (CAMERA_MODEL_WROVER)
+#define PWDN_GPIO_NUM -1
+#define RESET_GPIO_NUM -1
+#define XCLK_GPIO_NUM 21
+#define SIOD_GPIO_NUM 26
+#define SIOC_GPIO_NUM 27
+#define Y9_GPIO_NUM 35
+#define Y8_GPIO_NUM 34
+#define Y7_GPIO_NUM 39
+#define Y6_GPIO_NUM 36
+#define Y5_GPIO_NUM 19
+#define Y4_GPIO_NUM 18
+#define Y3_GPIO_NUM 5
+#define Y2_GPIO_NUM 4
+#define VSYNC_GPIO_NUM 25
+#define HREF_GPIO_NUM 23
+#define PCLK_GPIO_NUM 22
+
+/*
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { text-align:center; }
+    .vert { margin-bottom: 10%; }
+    .hori{ margin-bottom: 0%; }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <h2>ESP32-CAM Last Photo</h2>
+    <p>It might take more than 5 seconds to capture a photo.</p>
+    <p>
+      <button onclick="capturePhoto()">CAPTURE PHOTO</button>
+      <button onclick="location.reload();">REFRESH PAGE</button>
+    </p>
+  </div>
+  <div><img src="saved-photo" id="photo" width="70%"></div>
+</body>
+<script>
+  var deg = 0;
+  function capturePhoto() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', "/capture", true);
+    xhr.send();
+  }
+</script>
+</html>)rawliteral";
+*/
+
+// ---  Initialize the camera module ---
+void initialiseCamera()
+{
+  tg_client.setInsecure();
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+
+  // setting frame size, we use fixed resolution even if psram is available
+  config.frame_size = FRAMESIZE_VGA; // (640 x 480);
+  config.jpeg_quality = 16;
+  config.fb_count = 1;
+  /*
+  if (psramFound()) {
+    config.frame_size = FRAMESIZE_VGA // (640 x 480);
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+  } else {
+    config.frame_size = FRAMESIZE_SVGA;
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+  }
+  */
+  // Camera init
+  esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.printf("Camera init failed with error 0x%x", err);
+    }
+    ESP.restart();
+  }
+  else
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("Camera init OK");
+    }
+  }
+}
+
+void setup()
+{
+  // Serial port for debugging purposes
+  Serial.begin(115200);
+
+  // Connect to Wi-Fi
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(1000);
+
+    if (SERIAL_DEBUG)
+    {
+      Serial.print("Connecting to WiFi... ");
+      Serial.println(ssid);
+    }
+  }
+  tg_client.setInsecure();
+  bot.begin();
+  tg_client.connect("api.telegram.org", 80);
+  int last_message_recived = 882826754;
+  String getRequest;
+	getRequest = "/bot";
+	getRequest += String(token);
+	getRequest += "/getUpdates?limit=1&offset=";
+	getRequest += String(last_message_recived);
+	tg_client.print(String("GET ") + getRequest + "HTTP/1.1 \r\n" + "HOST: api.telegram.org \r\n\r\n");
+  String tmp;
+  while (tg_client.available()){
+    char c = tg_client.read();
+    Serial.print(c);
+  }
+
+  
+  // Mount SPIFFS file system
+  if (!SPIFFS.begin(true))
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("An Error has occurred while mounting SPIFFS");
+    }
+    ESP.restart();
+  }
+  else
+  {
+    delay(500);
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("SPIFFS mounted successfully");
+    }
+  }
+
+  // Turn-off the 'brownout detector'
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+  /*
+  // Route for root / web page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+            { request->send_P(200, "text/html", index_html); });
+
+  server.on("/capture", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+    takeNewPhoto = true;
+    request->send_P(200, "text/plain", "Taking Photo"); });
+
+  server.on("/saved-photo", HTTP_GET, [](AsyncWebServerRequest *request)
+            { request->send(SPIFFS, FILE_PHOTO, "image/jpg", false); });
+  */
+
+  // camera set up
+  initialiseCamera();
+
+  // Print ESP32 Local IP Address
+  if (SERIAL_DEBUG)
+  {
+    Serial.print("IP Address: http://");
+    Serial.println(WiFi.localIP());
+  }
+
+  // Start server
+  // server.begin();
+}
+
+void loop()
+{
+  if (takeNewPhoto)
+  {
+
+    // capture a live image from camera (as a jpg)
+    camera_fb_t *fb = NULL;
+    fb = esp_camera_fb_get();
+
+    capturePhotoSaveSpiffs(fb);
+    delay(5000);
+    readRGBImage(fb);
+
+    esp_camera_fb_return(fb);
+
+    takeNewPhoto = false;
+  }
+
+  message m = bot.getUpdates(); // Read new messages
+  if (m.chat_id != 0)
+  { // Checks if there are some updates
+    Serial.println(m.text);
+    bot.sendMessage(m.chat_id, m.text); // Reply to the same chat with the same text
+  }
+  else
+  {
+    Serial.println("no new message");
+  }
+  delay(5000);
+}
+
+// Check if photo capture was successful
+bool checkPhoto(fs::FS &fs)
+{
+  File f_pic = fs.open(FILE_PHOTO);
+  if (!f_pic)
+  {
+    return 0;
+  }
+  unsigned int pic_sz = f_pic.size();
+  return (pic_sz > 100);
+}
+
+// Capture Photo and Save it to SPIFFS
+void capturePhotoSaveSpiffs(camera_fb_t *fb)
+{
+  // pointer
+  bool ok = 0;      // Boolean indicating if the picture has been taken correctly
+  int n_trying = 0; // Int to indicate how many times we tried to catch a picture
+  do
+  {
+    // Take a photo with the camera
+    if (SERIAL_DEBUG)
+    {
+      Serial.printf("Taking a photo... [ %d ]\n", n_trying);
+    }
+
+    if (!fb)
+    {
+      if (SERIAL_DEBUG)
+      {
+        Serial.println("Camera capture failed");
+      }
+      return;
+    }
+
+    // Photo file name
+    if (SERIAL_DEBUG)
+    {
+      Serial.printf("Picture file name: %s\n", FILE_PHOTO);
+    }
+
+    File file = SPIFFS.open(FILE_PHOTO, FILE_WRITE);
+
+    // Insert the data in the photo file
+    if (!file)
+    {
+      if (SERIAL_DEBUG)
+      {
+        Serial.println("Failed to open file in writing mode");
+      }
+    }
+    else
+    {
+      file.write(fb->buf, fb->len); // payload (image), payload length
+      if (SERIAL_DEBUG)
+      {
+        Serial.print("The picture has been saved in ");
+        Serial.print(FILE_PHOTO);
+        Serial.print(" - Size: ");
+        Serial.print(file.size());
+        Serial.println(" bytes");
+      }
+    }
+    // Close the file
+    file.close();
+    // esp_camera_fb_return(fb);
+
+    delay(6000); // delay the saving check otherwise the check will happen too fast
+
+    // check if file has been correctly saved in SPIFFS
+    ok = checkPhoto(SPIFFS);
+
+    if (!ok)
+    {
+      ++n_trying;
+      if (SERIAL_DEBUG)
+      {
+        Serial.println("There was an error opening the photo!");
+        Serial.printf("Retrying... [ %d ]\n", n_trying);
+      }
+    }
+
+  } while (!ok && n_trying < 3);
+}
+
+bool readRGBImage(camera_fb_t *fb)
+{
+  uint32_t tTimer; // used to time tasks
+
+  // check if psram is available
+  if (!psramFound())
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: no psram available to store the RGB data");
+    }
+    return false;
+  }
+
+  //   ------ main code for converting an image to RGB data ------
+
+  tTimer = millis(); // get current running time                                                                      // store time that image capture started
+  if (!fb)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: failed to capture image from camera");
+    }
+    return false;
+  }
+  else
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.print("Image capture took ");
+      Serial.print(millis() - tTimer);
+      Serial.println(" ms");
+      Serial.printf("Image resolution: %d x %d\n", fb->width, fb->height);
+      Serial.printf("Image size: %d bytes\n", fb->len);
+      Serial.printf("Image format: %d\n", fb->format);
+      // Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+    }
+  }
+
+  /*
+  // display captured image using base64 - seems a bit unreliable especially with larger images?
+  if (!sendRGBfile) {
+    client.print("<br>Displaying image direct from frame buffer");
+    String base64data = base64::encode(fb->buf, fb->len);      // convert buffer to base64
+    client.print(" - Base64 data length = " + String(base64data.length()) + " bytes\n" );
+    client.print("<br><img src='data:image/jpg;base64," + base64data + "'></img><br>\n");
+  }
+  */
+
+  // allocate memory to store the rgb data (in psram, 3 bytes per pixel)
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+  }
+  void *ptrVal = NULL;                                // create a pointer for memory location to store the data
+  uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
+  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
+  { // check if there is enough psram available
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: not enough psram to store the RGB data");
+    }
+    return false;
+  }
+
+  ptrVal = heap_caps_malloc(ARRAY_LENGTH, MALLOC_CAP_SPIRAM); // allocate memory for the RGB image
+  // ptrVal = malloc(ARRAY_LENGTH);
+  if (ptrVal == NULL)
+  {
+    Serial.println("ptrVal NULL");
+    return false;
+  }
+  uint8_t *rgb = (uint8_t *)ptrVal; // create the 'rgb' array pointer to the allocated memory space
+  bool jpeg_converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, rgb);
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("Free psram after rgb data allocated = %d K\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+  }
+
+  // convert the captured jpg image (from frame buffer) to rgb data (store in 'rgb' array)
+  tTimer = millis(); // store time that image conversion process started
+  if (!jpeg_converted)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: failed to convert jpeg to rgb888");
+    }
+    return false;
+  }
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("Image conversion took %d ms", millis() - tTimer);
+  }
+
+  /* --- THINGS TO DO ---
+    - eventually send rgb data through uart to msp432 OR elaborate the data on the esp32 and send it to the msp432
+  */
+
+  /*
+    //   ****** examples of using the resulting RGB data *****
+
+    // display some of the resulting data
+        uint32_t resultsToShow = 50;                                                                       // how much data to display
+        sendText(client,"<br>R,G,B data for first " + String(resultsToShow / 3) + " pixels of image");
+        for (uint32_t i = 0; i < resultsToShow-2; i+=3) {
+          sendText(client,String(rgb[i+2]) + "," + String(rgb[i+1]) + "," + String(rgb[i+0]));           // Red , Green , Blue
+          // // calculate the x and y coordinate of the current pixel
+          //   uint16_t x = (i / 3) % fb->width;
+          //   uint16_t y = floor( (i / 3) / fb->width);
+        }
+
+    // find the average values for each colour over entire image
+        uint32_t aRed = 0;
+        uint32_t aGreen = 0;
+        uint32_t aBlue = 0;
+        for (uint32_t i = 0; i < (ARRAY_LENGTH - 2); i+=3) { // go through all data and add up totals
+          aBlue+=rgb[i];
+          aGreen+=rgb[i+1];
+          aRed+=rgb[i+2];
+        }
+        aRed = aRed / (fb->width * fb->height); // divide total by number of pixels to give the average value
+        aGreen = aGreen / (fb->width * fb->height);
+        aBlue = aBlue / (fb->width * fb->height);
+        sendText(client,"Average Blue = " + String(aBlue));
+        sendText(client,"Average Green = " + String(aGreen));
+        sendText(client,"Average Red = " + String(aRed));
+  delay(5000);
+  // finished with the data so free up the memory space used in psram
+  //esp_camera_fb_return(fb); // camera frame buffer
+  Serial.println("prima heap free");
+  //free(ptrVal);
+  */
+  heap_caps_free(ptrVal);
+  Serial.println("prima heap free");
+  return true; // rgb data
+  // heap_caps_free(ptrVal);
+
+} // readRGBImage

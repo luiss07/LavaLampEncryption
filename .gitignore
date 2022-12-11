@@ -1,0 +1,12 @@
+.pio
+.vscode
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+secrets.h
+MSP432/uartMspEsp/.launches/
+MSP432/uartMspEsp/.settings/
+MSP432/uartMspEsp/.ccsproject/
+MSP432/uartMspEsp/.cproject/
+MSP432/uartMspEsp/.project/
