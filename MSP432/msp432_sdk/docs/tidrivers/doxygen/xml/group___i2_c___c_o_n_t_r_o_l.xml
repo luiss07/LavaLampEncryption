@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='UTF-8' standalone='no'?>
+<doxygen xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="compound.xsd" version="1.8.12">
+  <compounddef id="group___i2_c___c_o_n_t_r_o_l" kind="group">
+    <compoundname>I2C_CONTROL</compoundname>
+    <title>I2C_control command and status codes</title>
+    <innergroup refid="group___i2_c___s_t_a_t_u_s">Status Codes</innergroup>
+    <innergroup refid="group___i2_c___c_m_d">Command Codes</innergroup>
+    <briefdescription>
+    </briefdescription>
+    <detaileddescription>
+<para>These I2C macros are reservations for <ref refid="_i2_c_8h" kindref="compound">I2C.h</ref> </para>    </detaileddescription>
+  </compounddef>
+</doxygen>

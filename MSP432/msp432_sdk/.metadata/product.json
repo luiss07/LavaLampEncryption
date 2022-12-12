@@ -1,0 +1,17 @@
+{
+    "name": "simplelink_msp432p4_sdk",
+    "displayName": "SimpleLink MSP432P4 SDK",
+    "version": "3.40.01.02",
+    "documentationPath": "../docs",
+    "includePaths": [
+        "../source"
+    ],
+    "components": [
+        "/ti/drivers/drivers.component.js",
+        "/ti/utils/rov/rov.component.js"
+    ],
+    "devices": [
+        "MSP432P401R",
+        "MSP432P4111"
+    ]
+}
