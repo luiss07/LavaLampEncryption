@@ -4,7 +4,11 @@
 #include "esp_camera.h"
 #include "esp_timer.h"
 #include "secrets.h"
+//#define SHA256_DISABLE_WRAPPER
+#include "sha/sha256.h"
+
 #include <SPIFFS.h>
+// #include <telegram.h>
 #define SERIAL_DEBUG 1 // enable comments print in serial monitor
 #define JSON_DESER_VERBOSE 0
 
@@ -25,7 +29,15 @@
 #define VSYNC_GPIO_NUM 25
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
+// 640x480x3=921600 is the len of the parsed image array
+#define PTRVAL_LEN 921600
 
+struct message;
+message send_request(String method, String api_request, String params);
+
+const char *url = "api.telegram.org";
+int HTTP_PORT = 443;
+int offset = 0;
 struct message
 {
   int64_t chat_id = 0;
@@ -34,12 +46,15 @@ struct message
   int64_t offset_id = 0;
   String text;
   bool is_private = false;
+  message reply(String text, String parse_mode = "None"){
+    return send_request("POST", "sendMessage", "chat_id=" + String(this->chat_id) + "&text=" + text + "&parse_mode=" + parse_mode +"&reply_to_message" + String(this->message_id));
+  }
 };
-const char *url = "api.telegram.org";
-int HTTP_PORT = 443;
-int offset = 0;
-
 WiFiClientSecure client;
+
+uint8_t * parseRandomNumber(uint8_t *rgb);
+
+sha256_hasher_t hasher;
 
 void initialiseCamera()
 {
@@ -107,6 +122,7 @@ void setup()
   Serial.println("Starting");
   while (WiFi.status() != WL_CONNECTED)
   {
+    WiFi.begin(ssid, password);
     delay(1000);
   }
   // Mount SPIFFS file system
@@ -128,6 +144,8 @@ void setup()
   }
   initialiseCamera();
   client.setInsecure();
+
+  hasher = sha256_hasher_new();
 }
 
 bool checkPhoto(fs::FS &fs)
@@ -213,10 +231,10 @@ void capturePhotoSaveSpiffs(camera_fb_t *fb)
   } while (!ok && n_trying < 3);
 }
 
-message send_request(String method, String api_request, String params, camera_fb_t *fb = NULL)
+message send_request(String method, String api_request, String params)
 {
   message update;
-  
+
   if (method == "POST" && api_request == "sendPhoto")
   {
     // The request string is the call to the telegram api
@@ -369,12 +387,12 @@ message sendMessage(int64_t chat_id, String text, String parse_mode = "None")
 
 message sendCameraPhoto(int64_t chat_id, camera_fb_t *fb)
 {
-  String params = "--Lava01\r\nContent-Disposition: form-data; name=\"chat_id\"; \r\n\r\n" + String(chat_id) + 
-  "\r\n--Lava01\r\nContent-Disposition: form-data; name=\"photo\"" + "; filename=\"lavalamp.jpeg\"\r\nContent-Type: image/jpeg \r\n";
+  String params = "--Lava01\r\nContent-Disposition: form-data; name=\"chat_id\"; \r\n\r\n" + String(chat_id) +
+                  "\r\n--Lava01\r\nContent-Disposition: form-data; name=\"photo\"" + "; filename=\"lavalamp.jpeg\"\r\nContent-Type: image/jpeg \r\n";
   return send_request("POST", "sendPhoto", params);
 }
 
-bool readRGBImage(camera_fb_t *fb)
+bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
 {
   uint32_t tTimer; // used to time tasks
 
@@ -391,18 +409,25 @@ bool readRGBImage(camera_fb_t *fb)
   //   ------ main code for converting an image to RGB data ------
 
   tTimer = millis(); // get current running time                                                                      // store time that image capture started
-  if (!fb) {
-    if (SERIAL_DEBUG) { Serial.println("ERR: failed to capture image from camera"); }
+  if (!fb)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: failed to capture image from camera");
+    }
     return false;
-  } else{
-    if (SERIAL_DEBUG) {
+  }
+  else
+  {
+    if (SERIAL_DEBUG)
+    {
       Serial.print("Image capture took ");
       Serial.print(millis() - tTimer);
       Serial.println(" ms");
       Serial.printf("Image resolution: %d x %d\n", fb->width, fb->height);
       Serial.printf("Image size: %d bytes\n", fb->len);
       Serial.printf("Image format: %d\n", fb->format);
-      //Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+      // Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
     }
   }
 
@@ -417,33 +442,62 @@ bool readRGBImage(camera_fb_t *fb)
   */
 
   // allocate memory to store the rgb data (in psram, 3 bytes per pixel)
-  if (SERIAL_DEBUG) { Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM)/ 1024); }
-  void* ptrVal = NULL;                                // create a pointer for memory location to store the data
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+  }
+  void *ptrVal = NULL;                                      // create a pointer for memory location to store the data
   uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
-  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH) { // check if there is enough psram available
-    if (SERIAL_DEBUG) { Serial.println("ERR: not enough psram to store the RGB data"); }
+  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
+  { // check if there is enough psram available
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: not enough psram to store the RGB data");
+    }
     return false;
   }
 
   ptrVal = heap_caps_malloc(ARRAY_LENGTH, MALLOC_CAP_SPIRAM); // allocate memory for the RGB image
-  //ptrVal = malloc(ARRAY_LENGTH);
-  if (ptrVal == NULL){ Serial.println("ptrVal NULL"); return false; }
-  uint8_t *rgb = (uint8_t *)ptrVal;                           // create the 'rgb' array pointer to the allocated memory space
+  // ptrVal = malloc(ARRAY_LENGTH);
+  if (ptrVal == NULL)
+  {
+    Serial.println("ptrVal NULL");
+    return false;
+  }
+  rgb = (uint8_t *)ptrVal; // create the 'rgb' array pointer to the allocated memory space
   bool jpeg_converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, rgb);
-  if (SERIAL_DEBUG) { Serial.printf("Free psram after rgb data allocated = %d K\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("Free psram after rgb data allocated = %d K\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
+  }
 
   // convert the captured jpg image (from frame buffer) to rgb data (store in 'rgb' array)
   tTimer = millis(); // store time that image conversion process started
-  if (!jpeg_converted) {
-    if (SERIAL_DEBUG) { Serial.println("ERR: failed to convert jpeg to rgb888");}
+  if (!jpeg_converted)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("ERR: failed to convert jpeg to rgb888");
+    }
     return false;
   }
-  if (SERIAL_DEBUG) { Serial.printf("Image conversion took %d ms", millis() - tTimer);}
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
+    //for (uint32_t i = 0; i < PTRVAL_LEN; i++)
+    //{
+    //  Serial.print(rgb[i]);
+    //}
+    uint8_t * randomNumber = parseRandomNumber(rgb);
+    for(int i=0; i<32; i++){
+      Serial.printf("%d", randomNumber[i]);
+    }
+    Serial.println();
+  }
 
   /* --- THINGS TO DO ---
     - eventually send rgb data through uart to msp432 OR elaborate the data on the esp32 and send it to the msp432
   */
-
 
   /*
     //   ****** examples of using the resulting RGB data *****
@@ -477,28 +531,57 @@ bool readRGBImage(camera_fb_t *fb)
   // finished with the data so free up the memory space used in psram
   //esp_camera_fb_return(fb); // camera frame buffer
   Serial.println("prima heap free");
+
   //free(ptrVal);
   */
-  heap_caps_free(ptrVal); 
+
+  // only free ptrVal when we have stopped using it
+  // heap_caps_free(ptrVal);
   Serial.println("prima heap free");
-  return true;  // rgb data
-  //heap_caps_free(ptrVal);
+  
+  heap_caps_free(ptrVal);
+  return true; // rgb data
 
 } // readRGBImage
 
+uint8_t * parseRandomNumber(uint8_t *rgb)
+{
+  Sha256.initHmac(rgb, PTRVAL_LEN);
+  uint8_t * result = Sha256.resultHmac();
+
+  //for (uint32_t i = 0; i < 5; i++)
+  //{
+  //  Serial.printf("%d ", rgb[i]);
+  //}
+  //Serial.println();
+
+  return result;
+}
+
 void loop()
 {
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    WiFi.begin(ssid, password);
+    delay(1000);
+  }
   message update = getUpdate();
   // 788963490 is my telegram id to avoid that anyone can get photos
-  if (update.chat_id != 0 && update.text == "/photo" && update.user_id == 788963490)
+  if (update.chat_id != 0 && update.text == "/photo" &&
+      (update.user_id == 788963490 || update.user_id == 213298805))
   {
+    update.reply("Uploading...");
     camera_fb_t *fb = NULL;
     fb = esp_camera_fb_get();
+
+    uint8_t * rgb;
 
     capturePhotoSaveSpiffs(fb);
     sendCameraPhoto(update.chat_id, fb);
     // delay(5000);
-    // readRGBImage(fb);
+    readRGBImage(fb, rgb);
+
+
 
     esp_camera_fb_return(fb);
   }
