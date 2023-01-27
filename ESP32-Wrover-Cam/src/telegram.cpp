@@ -1,16 +1,5 @@
-#include <Wifi.h>
-#include <WiFiClientSecure.h>
-#include <ArduinoJson.h>
-#include <SPIFFS.h>
-#include "esp_timer.h"
-#include "secrets.h"
-#include "sha/sha256.h"
 #include "telegram.h"
-
-#define JSON_DESER_VERBOSE 0
-
-
-
+int offset = 0;
 
 message send_request(String method, String api_request, String params)
 {
@@ -161,7 +150,7 @@ message getUpdate()
   return send_request("GET", "getUpdates", "limit=1&offset=" + String(offset));
 }
 
-message sendMessage(int64_t chat_id, String text, String parse_mode = "None")
+message sendMessage(int64_t chat_id, String text, String parse_mode)
 {
   return send_request("POST", "sendMessage", "chat_id=" + String(chat_id) + "&text=" + text + "&parse_mode=" + parse_mode);
 }
@@ -171,4 +160,9 @@ message sendCameraPhoto(int64_t chat_id, camera_fb_t *fb)
   String params = "--Lava01\r\nContent-Disposition: form-data; name=\"chat_id\"; \r\n\r\n" + String(chat_id) +
                   "\r\n--Lava01\r\nContent-Disposition: form-data; name=\"photo\"" + "; filename=\"lavalamp.jpeg\"\r\nContent-Type: image/jpeg \r\n";
   return send_request("POST", "sendPhoto", params);
+}
+
+message message::reply(String text, String parse_mode)
+{
+  return send_request("POST", "sendMessage", "chat_id=" + String(this->chat_id) + "&text=" + text + "&parse_mode=" + parse_mode + "&reply_to_message" + String(this->message_id));
 }
