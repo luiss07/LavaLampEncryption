@@ -1,7 +1,0 @@
-{
-  "name": "ti-widget-panel",
-  "private": true,
-  "dependencies": {
-    "polymer": "Polymer/polymer#~0.5.5"
-  }
-}
