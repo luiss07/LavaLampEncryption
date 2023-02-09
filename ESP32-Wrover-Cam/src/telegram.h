@@ -1,3 +1,7 @@
+#ifndef STRUCT_MESSAGE
+
+#define STRUCT_MESSAGE
+
 #include <esp_camera.h>
 #include <SPIFFS.h>
 #include <WiFiClientSecure.h>
@@ -5,10 +9,8 @@
 #include "config.h"
 #include "secrets.h"
 
-#ifndef STRUCT_MESSAGE
 
-#define STRUCT_MESSAGE
-static WiFiClientSecure client;
+inline WiFiClientSecure client;
 
 struct message
 {

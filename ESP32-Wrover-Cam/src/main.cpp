@@ -72,6 +72,7 @@ void setup()
   Serial.println("Starting");
   while (WiFi.status() != WL_CONNECTED)
   {
+    Serial.println("Connecting...");
     WiFi.begin(ssid, password);
     delay(1000);
   }
@@ -351,10 +352,13 @@ void loop()
 {
   if (WiFi.status() != WL_CONNECTED)
   {
+    Serial.println("Connecting...");
     WiFi.begin(ssid, password);
     delay(1000);
   }
+  Serial.println("calling update...");
   message update = getUpdate();
+  Serial.printf("chat id: %d\n", update.chat_id);
   // 788963490 is my telegram id to avoid that anyone can get photos
   if (update.chat_id != 0 && update.text == "/photo" &&
       (update.user_id == 788963490 || update.user_id == 213298805))

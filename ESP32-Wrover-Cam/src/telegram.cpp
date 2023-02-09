@@ -14,6 +14,7 @@ message send_request(String method, String api_request, String params)
     client.connect(url, HTTP_PORT);
     if (!client.connected())
     {
+      Serial.println("Client could not connect!");
       client.stop();
       return update;
     }
@@ -123,6 +124,7 @@ message send_request(String method, String api_request, String params)
         offset = (int)doc["result"][0]["update_id"];
         update.offset_id = offset;
         offset++;
+        Serial.printf("update.chat_id: %d, update.offset_id %d\n", update.chat_id, update.offset_id);
       }
       else
       {
@@ -132,6 +134,9 @@ message send_request(String method, String api_request, String params)
         update.message_id = doc["result"]["message_id"].as<int64_t>();
         update.text = doc["result"]["text"].as<String>();
       }
+    }
+    else {
+      Serial.printf("Client couldn't connect to URL %s and PORT %d\n", url, HTTP_PORT);
     }
   }
 
