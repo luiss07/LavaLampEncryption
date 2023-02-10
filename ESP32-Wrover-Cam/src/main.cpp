@@ -67,15 +67,21 @@ void setup()
 {
   Serial.begin(115200);
   // To get low level debug if activated in platformio.ini
-  Serial.setDebugOutput(true);
+  Serial.setDebugOutput(false);
+
+  WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
+  delay(1000); // wait for WiFi to disconnect
+
   WiFi.begin(ssid, password);
-  Serial.println("Starting");
+  if (SERIAL_DEBUG) { Serial.print("Connecting to Wifi"); }
   while (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("Connecting...");
-    WiFi.begin(ssid, password);
-    delay(1000);
+    if (SERIAL_DEBUG) { Serial.print("."); }
+    delay(3000);
   }
+
+  if (SERIAL_DEBUG) { Serial.println(); Serial.println("WiFi connected!"); }
+
   // Mount SPIFFS file system
   if (!SPIFFS.begin(true))
   {
@@ -327,7 +333,6 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
 
   // only free ptrVal when we have stopped using it
   // heap_caps_free(ptrVal);
-  Serial.println("prima heap free");
   
   heap_caps_free(ptrVal);
   return true; // rgb data
@@ -350,18 +355,28 @@ uint8_t * parseRandomNumber(uint8_t *rgb)
 
 void loop()
 {
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.println("Connecting...");
-    WiFi.begin(ssid, password);
+  // check if the wifi is connected
+  if (WiFi.status() != WL_CONNECTED) {
+    if (SERIAL_DEBUG) { Serial.println("WiFi suddenly disconnected!"); }
+
+    WiFi.disconnect(); // reset wifi
     delay(1000);
+
+    WiFi.begin(ssid, password);
+    // wait for the wifi to connect
+    if (SERIAL_DEBUG) { Serial.print("Connecting to WiFi"); }
+    while( WiFi.status() != WL_CONNECTED){
+      if (SERIAL_DEBUG) { Serial.print("."); }
+      delay(3000);
+    }
+    if (SERIAL_DEBUG) { Serial.println(); Serial.println("WiFi connnected"); }
   }
-  Serial.println("calling update...");
+  if (SERIAL_DEBUG) { Serial.println("calling update..."); }
   message update = getUpdate();
-  Serial.printf("chat id: %d\n", update.chat_id);
+  if (SERIAL_DEBUG) { Serial.printf("chat id: %d\n", update.chat_id); }
   // 788963490 is my telegram id to avoid that anyone can get photos
   if (update.chat_id != 0 && update.text == "/photo" &&
-      (update.user_id == 788963490 || update.user_id == 213298805))
+      (update.user_id == 788963490 || update.user_id == 213298805 || update.user_id == 206312359))
   {
     update.reply("Uploading...");
     camera_fb_t *fb = NULL;
@@ -373,8 +388,6 @@ void loop()
     sendCameraPhoto(update.chat_id, fb);
     // delay(5000);
     readRGBImage(fb, rgb);
-
-
 
     esp_camera_fb_return(fb);
   }
