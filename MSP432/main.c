@@ -790,5 +790,86 @@ void mainMenuPage(uint8_t *hashedNumber, bool loadAnimation) {
  */
 void main(void)
 {
-	WDT_A->CTL = WDT_A_CTL_PW | WDT_A_CTL_HOLD;		// stop watchdog timer
+    _hwInit();
+
+    //RAND_MAX is 32767...
+    //printf("RAND_MAX is %d\n", RAND_MAX);
+
+    // Initialize and start a one-shot timer
+    Timer32_initModule(TIMER32_0_BASE, TIMER32_PRESCALER_1, TIMER32_32BIT, TIMER32_PERIODIC_MODE);
+
+    uint8_t arr[32] = {164,189,205,253,192,177,250,155,255,112,152,127,127,111,114,75,34,72,234,87,90,23,222,123,234,65,162,1,2,3,10,8};
+    uint8_t arr_test[32] = {1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9,1,2,3,4,5};
+    mainMenuPage(arr, loadAnimation_user);
+    //drawIntegerPage(arr);
 }
+
+
+/* This interrupt is fired whenever a conversion is completed and placed in
+ * ADC_MEM1. This signals the end of conversion and the results array is
+ * grabbed and placed in resultsBuffer */
+void ADC14_IRQHandler(void)
+{
+    uint64_t status;
+
+    status = ADC14_getEnabledInterruptStatus();
+    ADC14_clearInterruptFlag(status);
+
+    /* ADC_MEM1 conversion completed */
+    if(status & ADC_INT1)
+    {
+        // reset the movement variables
+        moveUp = 0;
+        moveDown = 0;
+        moveLeft = 0;
+        moveRight = 0;
+        /* Store ADC14 conversion results */
+        resultsBuffer[0] = ADC14_getResult(ADC_MEM0);
+        resultsBuffer[1] = ADC14_getResult(ADC_MEM1);
+
+        if (resultsBuffer[0] > 14000 && resultsBuffer[1] < 10000 && resultsBuffer[1] > 6000) {
+            moveRight = 1;
+        }
+        else if (resultsBuffer[0] < 2000 && resultsBuffer[1] < 10000 && resultsBuffer[1] > 6000) {
+            moveLeft = 1;
+        }
+        else if (resultsBuffer[1] > 14000 && resultsBuffer[0] < 10000 && resultsBuffer[0] > 6000) {
+            moveUp = 1;
+        }
+        else if (resultsBuffer[1] < 2000 && resultsBuffer[0] < 10000 && resultsBuffer[0] > 6000) {
+            moveDown = 1;
+        }
+
+
+        // char string[10];
+        // sprintf(string, "X: %5d", resultsBuffer[0]);
+        // Graphics_drawStringCentered(&g_sContext,
+        //                                 (int8_t *)string,
+        //                                 8,
+        //                                 64,
+        //                                 50,
+        //                                 OPAQUE_TEXT);
+
+        // sprintf(string, "Y: %5d", resultsBuffer[1]);
+        // Graphics_drawStringCentered(&g_sContext,
+        //                                 (int8_t *)string,
+        //                                 8,
+        //                                 64,
+        //                                 70,
+        //                                 OPAQUE_TEXT);
+
+        /* Determine if JoyStick button is pressed */
+        buttonPressed = 0;
+        if (!(P4IN & GPIO_PIN1))
+            buttonPressed = 1;
+
+        // sprintf(string, "Button: %d", buttonPressed);
+        // Graphics_drawStringCentered(&g_sContext,
+        //                                 (int8_t *)string,
+        //                                 AUTO_STRING_LENGTH,
+        //                                 64,
+        //                                 90,
+        //                                 OPAQUE_TEXT);
+    }
+}
+
