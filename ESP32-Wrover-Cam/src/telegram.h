@@ -8,6 +8,7 @@
 #include "ArduinoJson.h"
 #include "config.h"
 #include "secrets.h"
+#define NUMBER_COMMAND "/num"
 
 
 inline WiFiClientSecure client;
