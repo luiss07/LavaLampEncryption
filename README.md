@@ -84,7 +84,7 @@ The ``` MSP432 ``` folder contains the code for the MSP432. The code is written 
 - ``` src ``` contains the source files
 - ``` targetConfigs ``` contains the target configuration files
 
-# How to use (Reccomended)
+# Getting Started
 
 ## Prerequisites
 
@@ -96,6 +96,8 @@ The ``` MSP432 ``` folder contains the code for the MSP432. The code is written 
 
 :white_check_mark: [ESP-CAM-driver - CH340](http://www.wch-ic.com/search?q=CH340&t=downloads)
 
+## Installation
+
 We assume that you have already installed ```Visual Studio Code``` with ``` PlatformIO ``` extension and ```CCS``` with the MSP432P401R support. If you haven't done it yet, please follow the instructions in the links above.
 
 Clone the repository using the following command:
@@ -104,7 +106,7 @@ Clone the repository using the following command:
 git clone https://github.com/luiss07/LavaLampEncryption.git
 ```
 
-## MSP432
+### MSP432
 
 1. Open the ``` MSP432 ``` folder in CCS
 2. Include the following libraries in the project:
@@ -113,10 +115,10 @@ git clone https://github.com/luiss07/LavaLampEncryption.git
 
 3. Build and upload the code
 
-## ESP32-Wrover-Cam
+### ESP32-Wrover-Cam
 
 1. Open the ``` ESP32-Wrover-Cam ``` folder in Visual Studio Code
-2. Create the ``` src/secrets.h ``` file and set the following parameters:
+2. Create the ``` include/secrets.h ``` file and set the following parameters:
 
 ``` c++
 #ifndef __SECRETS_H__
