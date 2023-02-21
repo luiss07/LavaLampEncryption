@@ -72,7 +72,7 @@ void setup()
   WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
   delay(1000); // wait for WiFi to disconnect
 
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, PASSWORD_SSID);
   if (SERIAL_DEBUG) { Serial.print("Connecting to Wifi"); }
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -362,7 +362,7 @@ void loop()
     WiFi.disconnect(); // reset wifi
     delay(1000);
 
-    WiFi.begin(ssid, password);
+    WiFi.begin(WIFI_SSID, PASSWORD_SSID);
     // wait for the wifi to connect
     if (SERIAL_DEBUG) { Serial.print("Connecting to WiFi"); }
     while( WiFi.status() != WL_CONNECTED){
