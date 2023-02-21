@@ -2,17 +2,17 @@
 
 This repository contains a project for the course Embedded Software for the Internet of Things @Unitn.
 
-The project consists in a system that generate seeds using a Lava Lamp as a source of entropy. These seeds are then used to encrypt and decrypt messages using ( insert algorithm ), generate random numbers and so on.
+The project consists in a system that generate seeds using a **Lava Lamp** as a source of entropy. These seeds are then used to encrypt and decrypt messages using ( insert algorithm ), generate random numbers and so on.
 
 ## Features
 
-> - The system has a LCD display that allows the user to:
->   - generate new seeds
->   - generate randoms numbers in a given range
->   - change display settings sush as: animations and color theme  
-> - The system implements a Telegram bot the allows the user to:
->   - generate random numbers
->   - encrypt and decrypt messages
+> - The system has a **LCD display** that allows the user to:
+>   - generate new **seeds**
+>   - **generate randoms numbers** in a given range
+>   - change **display settings** sush as: animations and color theme  
+> - The system implements a **Telegram bot** the allows the user to:
+>   - generate *random numbers*
+>   - **encrypt** and **decrypt messages**
 
 
 ## Hardware requirements
@@ -20,19 +20,19 @@ The project consists in a system that generate seeds using a Lava Lamp as a sour
 - ESP32-Wrover-Cam
 
 <div align="center">
-    <img src="">
+    <img src="./images/esp32-cam.png" width=250>
 </div>
 
 - MSP432P401R
 
 <div align="center">
-    <img src="msp432.jpg">
+    <img src="./images/msp432p401r.svg" width=250>
 </div>
 
 - MSP432P401R BoosterPack
 
 <div align="center">
-    <img src="msp432-boosterPack.jpg">
+    <img src="./images/msp432-boosterPack.svg" width=350>
 </div>
 
 - Lava Lamp
@@ -89,9 +89,12 @@ The ``` MSP432 ``` folder contains the code for the MSP432. The code is written 
 ## Prerequisites
 
 :white_check_mark: [Visual Studio Code](https://code.visualstudio.com/)
-:white_check_mark: [PlatformIO extension](https://platformio.org/install/ide?install=vscode)
+
+:white_check_mark: [PlatformIO extension](https://platformio.org/install/ide?install=vscode) / [ArduinoIDE (not tested)](https://www.arduino.cc/en/software)
+
 :white_check_mark: [CCS](http://www.ti.com/tool/CCSTUDIO)
-:white_check_mark: [MSP432P401R support]()
+
+:white_check_mark: [ESP-CAM-driver - CH340](http://www.wch-ic.com/search?q=CH340&t=downloads)
 
 We assume that you have already installed ```Visual Studio Code``` with ``` PlatformIO ``` extension and ```CCS``` with the MSP432P401R support. If you haven't done it yet, please follow the instructions in the links above.
 
@@ -139,7 +142,8 @@ git clone https://github.com/luiss07/LavaLampEncryption.git
 
 - [Luigi Dell'Eva](https://github.com/luiss07/)
 
-    - Worked on the ESP32 code to catch the Lava Lamp's photo and the serial communication between the ESP32 and the MSP432.
+    - Worked on the ESP32 code to capture the Lava Lamp's photo.
+    - Serial communication between the ESP32 and the MSP432.
 
 - [Riccardo Germenia](https://github.com/Odinmylord)
 
