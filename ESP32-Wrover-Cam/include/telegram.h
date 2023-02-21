@@ -11,7 +11,7 @@
 #define NUMBER_COMMAND "/num"
 
 
-inline WiFiClientSecure client;
+extern WiFiClientSecure client;
 
 struct message
 {

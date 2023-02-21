@@ -6,6 +6,8 @@ uint8_t * parseRandomNumber(uint8_t *rgb);
 
 sha256_hasher_t hasher;
 
+WiFiClientSecure client;
+
 void initialiseCamera()
 {
   camera_config_t config;
