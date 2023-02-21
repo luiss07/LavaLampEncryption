@@ -1,21 +1,4 @@
-#include <ti/devices/msp432p4xx/inc/msp.h>
-#include <ti/devices/msp432p4xx/driverlib/driverlib.h>
-#include <ti/grlib/grlib.h>
-#include "LcdDriver/Crystalfontz128x128_ST7735.h"
-#include "LcdDriver/HAL_MSP_EXP432P401R_Crystalfontz128x128_ST7735.h"
-#include <stdio.h>
-#include <math.h>
-#include "msp.h"
-
-#define ROWS_FOR_HASH_NUMBER 5
-#define DIGITS_OF_HASHED_NUMBER 97
-#define DIGITS_OF_HASHED_NUMBER_ARRAY 4
-#define MAX_DIGITS_INLINE 19
-#define MAX_MENU_SELECTIONS 4
-#define MAX_RANDOM_NUMBER_DIGITS 10
-#define GENERATE_PAGE_SELECTIONS 5
-#define SETTINGS_PAGE_SELECTIONS 3
-#define MAX_THEMES 3
+#include "lavaLampInterface.h"
 
 /* Graphic library context */
 Graphics_Context g_sContext;
@@ -23,8 +6,9 @@ Graphics_Context g_sContext;
 /* ADC results buffer */
 static uint16_t resultsBuffer[2];
 
-// buttonPressed checks if the joystick button has been pressed
-int buttonPressed;
+int joystickButtonPressed;
+int rightUpButtonPressed = 0;
+int rightDownButtonPressed = 0;
 // currentThemeCounter saves the current selected theme
 int currentThemeCounter = 0;
 char * themes[MAX_THEMES] = {"Dark mode", "Light mode", "Fire"};
@@ -38,15 +22,15 @@ uint32_t FOREGROUND_COLOR = GRAPHICS_COLOR_LIME;
 uint32_t BACKGROUND_COLOR = GRAPHICS_COLOR_BLACK;
 uint32_t SELECTION_COLOR = GRAPHICS_COLOR_DARK_GRAY;
 
-// uint32_t FOREGROUND_COLOR = GRAPHICS_COLOR_BLACK;
-// uint32_t BACKGROUND_COLOR = GRAPHICS_COLOR_WHITE;
-// uint32_t SELECTION_COLOR = GRAPHICS_COLOR_DARK_GRAY;
+bool loadAnimation_user = true;  
 
 
-bool loadAnimation_user = true;
+uint8_t hashedNumber[32] = {164,189,205,253,192,177,250,155,255,112,152,127,127,111,114,75,34,72,234,87,90,23,222,123,234,65,162,1,2,3,10,8};
 
-void _adcInit(){
-    /* Configures Pin 6.0 and 4.4 as ADC input */
+
+void _adcInit()
+{
+        /* Configures Pin 6.0 and 4.4 as ADC input */
         GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P6, GPIO_PIN0, GPIO_TERTIARY_MODULE_FUNCTION);
         GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P4, GPIO_PIN4, GPIO_TERTIARY_MODULE_FUNCTION);
 
@@ -81,6 +65,29 @@ void _adcInit(){
         /* Triggering the start of the sample */
         ADC14_enableConversion();
         ADC14_toggleConversionTrigger();
+}
+
+void _gpioInit()
+{
+    // Configure right-up button (P5.1) as input
+    GPIO_setAsInputPin(GPIO_PORT_P5, GPIO_PIN1);
+
+    // Configure rising edge interrupt for right-up button
+    GPIO_interruptEdgeSelect(GPIO_PORT_P5, GPIO_PIN1, GPIO_HIGH_TO_LOW_TRANSITION);
+    GPIO_clearInterruptFlag(GPIO_PORT_P5, GPIO_PIN1);
+    GPIO_enableInterrupt(GPIO_PORT_P5, GPIO_PIN1);
+
+    // Configure right-down button (P3.5) as input
+    GPIO_setAsInputPin(GPIO_PORT_P3, GPIO_PIN5);
+
+    // Configure rising edge interrupt for right-down button
+    GPIO_interruptEdgeSelect(GPIO_PORT_P3, GPIO_PIN5, GPIO_HIGH_TO_LOW_TRANSITION);
+    GPIO_clearInterruptFlag(GPIO_PORT_P3, GPIO_PIN5);
+    GPIO_enableInterrupt(GPIO_PORT_P3, GPIO_PIN5);
+
+    // Enable interrupt for Port 5 and Port 3
+    Interrupt_enableInterrupt(INT_PORT5);
+    Interrupt_enableInterrupt(INT_PORT3);
 }
 
 void _graphicsInit()
@@ -122,53 +129,53 @@ void _hwInit()
     CS_initClockSignal(CS_SMCLK, CS_DCOCLK_SELECT, CS_CLOCK_DIVIDER_1);
     CS_initClockSignal(CS_ACLK, CS_REFOCLK_SELECT, CS_CLOCK_DIVIDER_1);
 
+    // Initialize and start a one-shot timer
+    Timer32_initModule(TIMER32_0_BASE, TIMER32_PRESCALER_1, TIMER32_32BIT, TIMER32_PERIODIC_MODE);
+
     _graphicsInit();
     _adcInit();
+    _gpioInit();
 }
 
 
 // Function to restart 2 second timer
-void restartTimer2sec() {
+void restartTimer2sec() 
+{
     Timer32_setCount(TIMER32_0_BASE, 60000000); // 2 seconds (default was 6000000)
     Timer32_startTimer(TIMER32_0_BASE, true);
 }
 
 // Function to restart 1 second timer
-void restartTimer500ms() {
+void restartTimer500ms() 
+{
     Timer32_setCount(TIMER32_0_BASE, 15000000); // 1 second
     Timer32_startTimer(TIMER32_0_BASE, true);
 }
 
 // Function to restart 0.2 second timer
-void restartTimer200ms() {
+void restartTimer200ms() 
+{
     Timer32_setCount(TIMER32_0_BASE, 6000000); // 0.2 seconds
     Timer32_startTimer(TIMER32_0_BASE, true);
 }
 
 // Function to restart 0.05 second timer
-void restartTimer50ms() {
+void restartTimer50ms() 
+{
     Timer32_setCount(TIMER32_0_BASE, 1500000); // 0.05 seconds
     Timer32_startTimer(TIMER32_0_BASE, true);
 }
 
 // Function to check if timer is expired
-bool isTimerExpired() {
+bool isTimerExpired() 
+{
     return (Timer32_getValue(TIMER32_0_BASE) == 0);
 }
 
-void convert_number_to_result(uint8_t *hashedNumber, int hashedNumber_len, char *result_as_string) {
-
-    int number_length;
-
+void convert_number_to_result(int hashedNumber_len, char *result_as_string) 
+{
     int i=0;
     for (; i<hashedNumber_len; i++) {
-        // calculate the number of digits of the number (+1 to include the string terminator symbol)
-        if (hashedNumber[i] == 0) {
-            number_length = 2;
-        }
-        else {
-            number_length = (int)((ceil(log10(hashedNumber[i]))+1)*sizeof(char));
-        }
         // define a buffer
         char current_number_to_string[DIGITS_OF_HASHED_NUMBER_ARRAY];
 
@@ -181,14 +188,16 @@ void convert_number_to_result(uint8_t *hashedNumber, int hashedNumber_len, char 
 
 // function to strip a string from its first N chars.
 // source: https://stackoverflow.com/questions/4761764/how-to-remove-first-three-characters-from-string-with-c
-void chopN(char *str, size_t n) {
+void chopN(char *str, size_t n) 
+{
     size_t len = strlen(str);
     if (n > len)
         return;  // Or: n = len;
     memmove(str, str+n, len - n + 1);
 }
 
-void drawIntegerPage(uint8_t *hashedNumber) {
+void drawIntegerPage() 
+{
     Graphics_clearDisplay(&g_sContext);
     // at 14 pixels per character height, 19 numbers can be printed in a single line
     // the hashed number will have at most 32*3 = 96 digits
@@ -197,7 +206,7 @@ void drawIntegerPage(uint8_t *hashedNumber) {
 
     char result_as_string[ROWS_FOR_HASH_NUMBER*MAX_DIGITS_INLINE] = "";
     //char result_as_string[ROWS_FOR_HASH_NUMBER][MAX_DIGITS_INLINE];
-    convert_number_to_result(hashedNumber, 32, result_as_string);
+    convert_number_to_result(32, result_as_string);
 
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
     Graphics_drawString(&g_sContext, "The calculated seed is:", -1, 0, 0, true);
@@ -211,30 +220,91 @@ void drawIntegerPage(uint8_t *hashedNumber) {
         while(!isTimerExpired()); // Wait 0.2 seconds
     }
 
-    Graphics_setForegroundColor(&g_sContext, SELECTION_COLOR);
-    Graphics_Rectangle myRect = {42, 108, 85, 122};
-    Graphics_fillRectangle(&g_sContext, &myRect);
+    
+    int currentHoveredSelection = 0, offsetY = 31;
+    int offsetsY[2] = {79, 79};
+    int offsetsX[2] = {0, 90};
 
-    Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+    // array to remember which selection we are hovering on
+    bool hoveredSelection[2] = {true, false};
+    bool selectionChanged = false;
+
+    // array of the different menu selections
+    char * menuSelections[2] = {"Get new seed", "Go back"};
+
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
-    Graphics_drawString(&g_sContext, "Go back", -1, 45, 110, false);
 
-    Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
-    Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+    // draw the menu selections
+    while(1) {
+        int i=0;
+        for(; i<2; i++) {
+            if (hoveredSelection[i]) {
+                Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+                Graphics_setBackgroundColor(&g_sContext, SELECTION_COLOR);
+                Graphics_drawString(&g_sContext, menuSelections[i], -1, offsetsX[i], offsetY + offsetsY[i], true);
+                Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+                Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+            }
+            else {
+                Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+                Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+                Graphics_drawString(&g_sContext, menuSelections[i], -1, offsetsX[i], offsetY + offsetsY[i], true);
+            }
+            if (loadAnimation_user && !selectionChanged) restartTimer200ms();
+            while(!isTimerExpired()); // Wait 0.2 seconds
+        }
+        restartTimer200ms();
+        while(!isTimerExpired()); // Wait 0.2 seconds
+        while (moveLeft == 0 && moveRight == 0 && joystickButtonPressed == 0) {};
+        selectionChanged = true;
+        if (moveLeft == 1) {
+            if (currentHoveredSelection == 0) {
+                hoveredSelection[currentHoveredSelection] = false;
+                currentHoveredSelection = 2 - 1;
+                hoveredSelection[currentHoveredSelection] = true;
+            }
+            else {
+                hoveredSelection[currentHoveredSelection] = false;
+                currentHoveredSelection -= 1;
+                hoveredSelection[currentHoveredSelection] = true;
+            }
+        }
+        else if (moveRight == 1) {
+            if (currentHoveredSelection == 2-1) {
+                hoveredSelection[currentHoveredSelection] = false;
+                currentHoveredSelection = 0;
+                hoveredSelection[currentHoveredSelection] = true;
+            }
+            else {
+                hoveredSelection[currentHoveredSelection] = false;
+                currentHoveredSelection += 1;
+                hoveredSelection[currentHoveredSelection] = true;
+            }
+        }
+        else if (joystickButtonPressed == 1) {
+            if (strcmp(menuSelections[currentHoveredSelection], "Get new seed") == 0) {
+                
+                //TODO: send the ESP a generate new seed request
 
-    restartTimer200ms();
-    while(!isTimerExpired()); // Wait 0.2 seconds
-
-    while(buttonPressed == 0) {};
-    if (loadAnimation_user) transitionPage();
-    mainMenuPage(hashedNumber, loadAnimation_user);
+                //TODO: maybe wait some time before refreshing the page
+                if (loadAnimation_user) transitionPage();
+                drawIntegerPage();
+            }
+            else if (strcmp(menuSelections[currentHoveredSelection], "Go back") == 0) {
+                if (loadAnimation_user) transitionPage();
+                mainMenuPage();
+            }
+        }
+        restartTimer200ms();
+        while(!isTimerExpired()); // Wait 0.2 seconds
+    };
 }
 
-void aboutPage(uint8_t *hashedNumber) {
+void aboutPage() 
+{
     Graphics_clearDisplay(&g_sContext);
-    Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
-
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
+
     Graphics_drawString(&g_sContext, "LavaLamp Encrypt V1.0", -1, 0, 0, true);
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
     if (loadAnimation_user) restartTimer500ms();
@@ -267,36 +337,39 @@ void aboutPage(uint8_t *hashedNumber) {
     restartTimer200ms();
     while(!isTimerExpired()); // Wait 0.2 seconds
 
-    while(buttonPressed == 0) {};
+    while(joystickButtonPressed == 0) {};
     if (loadAnimation_user) transitionPage();
-    mainMenuPage(hashedNumber, loadAnimation_user);
+    mainMenuPage();
 }
 
-void generateRandomNumberPage(uint8_t *hashedNumber) {
+void generateRandomNumberPage() 
+{
     Graphics_clearDisplay(&g_sContext);
-
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
+
     Graphics_drawString(&g_sContext, "True Random Number", -1, 10, 0, true);
     Graphics_drawString(&g_sContext, "Generator", -1, 40, 12, true);
 
     Graphics_drawLineH(&g_sContext, 0, 128, 25);
 
-    int min = 1, max = 100, res;
+    long long int min = 1, max = 100;
+    int res;
     char min_to_string[MAX_RANDOM_NUMBER_DIGITS];
     char max_to_string[MAX_RANDOM_NUMBER_DIGITS];
     char res_to_string[MAX_RANDOM_NUMBER_DIGITS];
     sprintf(min_to_string, "%d", min);
     sprintf(max_to_string, "%d", max);
 
+    //TODO: move this in the interrupt between ESP and MSP comms
     char conversion_result[ROWS_FOR_HASH_NUMBER*MAX_DIGITS_INLINE] = "";
-    convert_number_to_result(hashedNumber, 32, conversion_result);
+    convert_number_to_result(32, conversion_result);
 
-    //TODO: invent new strange ways to parse the seed
     char seed_from_hash[18] = "";
 
     strncpy(seed_from_hash, conversion_result, 18);
 
     srand(atoll(seed_from_hash));
+    //----- until here 
 
     Graphics_drawString(&g_sContext, "Min: ", -1, 0, 31, true);
     Graphics_drawString(&g_sContext, min_to_string, -1, 30, 31, true);
@@ -316,6 +389,7 @@ void generateRandomNumberPage(uint8_t *hashedNumber) {
     int currentHoveredSelection = 0, offsetY = 31;
     int offsetsY[GENERATE_PAGE_SELECTIONS] = {0, 12, 30, 66, 79};
     int offsetsX[GENERATE_PAGE_SELECTIONS] = {30, 30, 0, 0, 45};
+
     // array to remember which selection we are hovering on
     bool hoveredSelection[GENERATE_PAGE_SELECTIONS] = {true, false, false, false, false};
     bool selectionChanged = false;
@@ -346,7 +420,7 @@ void generateRandomNumberPage(uint8_t *hashedNumber) {
         }
         restartTimer200ms();
         while(!isTimerExpired()); // Wait 0.2 seconds
-        while (moveUp == 0 && moveDown == 0 && moveLeft == 0 && moveRight == 0 && buttonPressed == 0) {};
+        while (moveUp == 0 && moveDown == 0 && moveLeft == 0 && moveRight == 0 && joystickButtonPressed == 0 && rightUpButtonPressed == 0 && rightDownButtonPressed == 0) {};
         selectionChanged = true;
         if (moveUp == 1) {
             if (currentHoveredSelection == 0) {
@@ -375,35 +449,71 @@ void generateRandomNumberPage(uint8_t *hashedNumber) {
         else if (moveRight == 1 && strcmp(menuSelections[currentHoveredSelection], min_to_string) == 0) {
             Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
             Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
-            if (min < max-1) min += 1;
+            if (min < max-1 && min+1 <= 999999999) min += 1;
             sprintf(min_to_string, "%d", min);
             Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
         }
         else if  (moveRight == 1 && strcmp(menuSelections[currentHoveredSelection], max_to_string) == 0) {
             Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
             Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
-            max += 1;
+            if (max+1 <= 999999999) max += 1;
             sprintf(max_to_string, "%d", max);
             Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
         }
         else if (moveLeft == 1 && strcmp(menuSelections[currentHoveredSelection], min_to_string) == 0) {
             Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
             Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
-            min -= 1;
+            if (min-1 >= -999999999) min -= 1;
             sprintf(min_to_string, "%d", min);
             Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
         }
         else if  (moveLeft == 1 && strcmp(menuSelections[currentHoveredSelection], max_to_string) == 0) {
             Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
             Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
-            if (max > min+1) max -= 1;
+            if (max > min+1 && max-1 >= -999999999) max -= 1;
             sprintf(max_to_string, "%d", max);
             Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
         }
-        else if (buttonPressed == 1) {
+        else if (rightUpButtonPressed == 1 && strcmp(menuSelections[currentHoveredSelection], min_to_string) == 0) {
+            rightUpButtonPressed = 0;
+            // multiply min by 10
+            Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+            Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+            if (min*10 < max && min*10 <= 999999999 && min*10 >= -999999999) min = min*10;
+            sprintf(min_to_string, "%d", min);
+            Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
+        }
+        else if (rightDownButtonPressed == 1 && strcmp(menuSelections[currentHoveredSelection], min_to_string) == 0) {
+            rightDownButtonPressed = 0;
+            // divide min by 10
+            Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+            Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+            if (min/10 < max && !(min/10 == 0 && max == 0)) min = min/10;
+            sprintf(min_to_string, "%d", min);
+            Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
+        }
+        else if (rightUpButtonPressed == 1 && strcmp(menuSelections[currentHoveredSelection], max_to_string) == 0) {
+            rightUpButtonPressed = 0;
+            // multiply max by 10
+            Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+            Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+            if (max*10 <= 999999999 && max*10 >= -999999999) max = max*10;
+            sprintf(max_to_string, "%d", max);
+            Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
+        }
+        else if (rightDownButtonPressed == 1 && strcmp(menuSelections[currentHoveredSelection], max_to_string) == 0) {
+            rightDownButtonPressed = 0;
+            // divide max by 10
+            Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
+            Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
+            if (max/10 > min && !(min == 0 && max/10 == 0)) max = max/10;
+            sprintf(max_to_string, "%d", max);
+            Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
+        }
+        else if (joystickButtonPressed == 1) {
             if (strcmp(menuSelections[currentHoveredSelection], "How to") == 0) {
                 if (loadAnimation_user) transitionPage();
-                howToPage(hashedNumber);
+                howToPage();
             }
             else if (strcmp(menuSelections[currentHoveredSelection], "GENERATE") == 0) {
                 strcpy(res_to_string, "");
@@ -415,7 +525,7 @@ void generateRandomNumberPage(uint8_t *hashedNumber) {
             }
             else if (strcmp(menuSelections[currentHoveredSelection], "Go back") == 0) {
                 if (loadAnimation_user) transitionPage();
-                mainMenuPage(hashedNumber, loadAnimation_user);
+                mainMenuPage();
             }
         }
         restartTimer200ms();
@@ -423,11 +533,24 @@ void generateRandomNumberPage(uint8_t *hashedNumber) {
     };
 }
 
-void howToPage(uint8_t *hashedNumber) {
+void howToPage() 
+{
     Graphics_clearDisplay(&g_sContext);
 
+    //TODO: fix here
+
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
-    Graphics_drawString(&g_sContext, "Usage: TODO", -1, 0, 0, false);
+    Graphics_drawString(&g_sContext, "Usage: Increment or decre-", -1, 0, 0, false);
+    Graphics_drawString(&g_sContext, "ment by 1 min and max by ", -1, 0, 12, false);
+    Graphics_drawString(&g_sContext, "scrolling to the left/right", -1, 0, 24, false);
+    Graphics_drawString(&g_sContext, "the joystick.", -1, 0, 36, false);
+    Graphics_drawString(&g_sContext, "Use the right upper button", -1, 0, 48, false);
+    Graphics_drawString(&g_sContext, "to multiply by 10.", -1, 0, 60, false);
+    Graphics_drawString(&g_sContext, "Use the right lower button", -1, 0, 72, false);
+    Graphics_drawString(&g_sContext, "to divide by 10.", -1, 0, 84, false);
+    Graphics_drawString(&g_sContext, "Press on the GENERATE button", -1, 0, 96, false);
+    Graphics_drawString(&g_sContext, "to generate the number", -1, 0, 108, false);
+    Graphics_drawString(&g_sContext, "with the given boundaries.", -1, 0, 120, false);
 
     Graphics_setForegroundColor(&g_sContext, SELECTION_COLOR);
     Graphics_Rectangle myRect = {42, 108, 85, 122};
@@ -443,35 +566,36 @@ void howToPage(uint8_t *hashedNumber) {
     restartTimer200ms();
     while(!isTimerExpired()); // Wait 0.2 seconds
 
-    while(buttonPressed == 0) {};
+    while(joystickButtonPressed == 0) {};
     if (loadAnimation_user) transitionPage();
-    generateRandomNumberPage(hashedNumber);
+    generateRandomNumberPage();
 }
 
-void changeTheme(char current_theme[64]) {
+void changeTheme() 
+{
     Graphics_clearDisplay(&g_sContext);
-    if (strcmp(current_theme, "Dark mode") == 0) {
+    if (strcmp(themes[currentThemeCounter], "Dark mode") == 0) {
         FOREGROUND_COLOR = GRAPHICS_COLOR_LIME;
         BACKGROUND_COLOR = GRAPHICS_COLOR_BLACK;
         SELECTION_COLOR = GRAPHICS_COLOR_DARK_GRAY;
     }
-    else if (strcmp(current_theme, "Light mode") == 0) {
+    else if (strcmp(themes[currentThemeCounter], "Light mode") == 0) {
         FOREGROUND_COLOR = GRAPHICS_COLOR_BLACK;
         BACKGROUND_COLOR = GRAPHICS_COLOR_WHITE;
         SELECTION_COLOR = GRAPHICS_COLOR_DARK_GRAY;
     }
-    else if (strcmp(current_theme, "Fire") == 0) {
+    else if (strcmp(themes[currentThemeCounter], "Fire") == 0) {
         FOREGROUND_COLOR = 0x00FF0022;
         BACKGROUND_COLOR = 0x00A3A5C3;
         SELECTION_COLOR =  0x00F0A202;
     }
-    //Graphics_clearDisplay(&g_sContext);
 }
 
-void settingsPage(uint8_t *hashedNumber) {
+void settingsPage() 
+{
     Graphics_clearDisplay(&g_sContext);
-
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
+
     Graphics_drawString(&g_sContext, "Theme: ", -1, 0, 0, false);
 
     Graphics_drawString(&g_sContext, "Animations: ", -1, 0, 15, false);
@@ -526,7 +650,7 @@ void settingsPage(uint8_t *hashedNumber) {
         }
         restartTimer200ms();
         while(!isTimerExpired()); // Wait 0.2 seconds
-        while (moveUp == 0 && moveDown == 0 && moveLeft == 0 && moveRight == 0 && buttonPressed == 0) {};
+        while (moveUp == 0 && moveDown == 0 && moveLeft == 0 && moveRight == 0 && joystickButtonPressed == 0) {};
         selectionChanged = true;
         if (moveUp == 1) {
             if (currentHoveredSelection == 0) {
@@ -560,7 +684,7 @@ void settingsPage(uint8_t *hashedNumber) {
             strcpy(current_theme, themes[currentThemeCounter]);
             Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
         }
-        else if ((moveRight == 1 || buttonPressed == 1) && strcmp(menuSelections[currentHoveredSelection], current_theme) == 0) {
+        else if ((moveRight == 1 || joystickButtonPressed == 1) && strcmp(menuSelections[currentHoveredSelection], current_theme) == 0) {
             Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
             Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
             if (currentThemeCounter == MAX_THEMES - 1) currentThemeCounter = 0;
@@ -568,7 +692,7 @@ void settingsPage(uint8_t *hashedNumber) {
             strcpy(current_theme, themes[currentThemeCounter]);
             Graphics_drawString(&g_sContext, "                     ", -1, offsetsX[currentHoveredSelection], offsetY + offsetsY[currentHoveredSelection], true);
         }
-        else if ((moveLeft == 1 || moveRight == 1 || buttonPressed == 1) && strcmp(menuSelections[currentHoveredSelection], animation_status) == 0) {
+        else if ((moveLeft == 1 || moveRight == 1 || joystickButtonPressed == 1) && strcmp(menuSelections[currentHoveredSelection], animation_status) == 0) {
             if (strcmp(menuSelections[currentHoveredSelection], "OFF") == 0) {
                 Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
                 Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
@@ -584,19 +708,20 @@ void settingsPage(uint8_t *hashedNumber) {
                 Graphics_drawString(&g_sContext, "  ", -1, 55, 15, true);
             }
         }
-        else if (buttonPressed == 1) {
+        else if (joystickButtonPressed == 1) {
             if (strcmp(menuSelections[currentHoveredSelection], "Go back and save") == 0) {
                 if (loadAnimation_user) transitionPage();
-                mainMenuPage(hashedNumber, loadAnimation_user);
+                mainMenuPage();
             }
         }
         restartTimer200ms();
         while(!isTimerExpired()); // Wait 0.2 seconds
-        changeTheme(themes[currentThemeCounter]);
+        changeTheme();
     };
 }
 
-void transitionPage() {
+void transitionPage() 
+{
     Graphics_setFont(&g_sContext, &g_sFontCmss14b);
     Graphics_clearDisplay(&g_sContext);
     char animated_matrix[30][19] = {
@@ -638,16 +763,22 @@ void transitionPage() {
         for(; j<10; j++) {
             if (i+j < 30) Graphics_drawString(&g_sContext, animated_matrix[29-(i+j)], -1, 0, 14*(9-j), true);
         }
+        if (joystickButtonPressed || rightDownButtonPressed || rightUpButtonPressed) {
+            if (rightDownButtonPressed) rightDownButtonPressed = 0;
+            if (rightUpButtonPressed) rightUpButtonPressed = 0;
+            break;  
+        }
     }
     Graphics_setFont(&g_sContext, &g_sFontCmss12);
 }
 
-void mainMenuPage(uint8_t *hashedNumber, bool loadAnimation) {
+void mainMenuPage() 
+{
     Graphics_clearDisplay(&g_sContext);
     Graphics_setFont(&g_sContext, &g_sFontCmss20b);
 
-    char string_top[8] = "LavaLamp";
-    int32_t lavaLampColours[8] = {      0x00E80030,
+    char string_lavalamp[8] = "LavaLamp";
+    int32_t lavaLampGradient[8] = {      0x00E80030,
                                         0x00EA4505,
                                         0x00FD6400,
                                         0x00FB6E03,
@@ -676,14 +807,13 @@ void mainMenuPage(uint8_t *hashedNumber, bool loadAnimation) {
 
     int i;
     for (i = 0; i < 8; i++) {
-        Graphics_setForegroundColor(&g_sContext, lavaLampColours[i]);
+        Graphics_setForegroundColor(&g_sContext, lavaLampGradient[i]);
         if (i==7) {
-            Graphics_drawString(&g_sContext, string_top, 1, 90, offsetY, true);
+            Graphics_drawString(&g_sContext, string_lavalamp, 1, 90, offsetY, true);
         }
-        else Graphics_drawString(&g_sContext, string_top, 1, i*12, offsetY, true);
-        //Graphics_drawString(&g_sContext, "LavaLamp", 1, i*8, 0, true);
-        chopN(string_top, 1);
-        if (loadAnimation) restartTimer50ms();
+        else Graphics_drawString(&g_sContext, string_lavalamp, 1, i*12, offsetY, true);
+        chopN(string_lavalamp, 1);
+        if (loadAnimation_user) restartTimer50ms();
         while(!isTimerExpired()); // Wait 2 seconds
     }
 
@@ -694,14 +824,12 @@ void mainMenuPage(uint8_t *hashedNumber, bool loadAnimation) {
         Graphics_setForegroundColor(&g_sContext, encryptGradient[j]);
         Graphics_drawString(&g_sContext, string_encrypt, 1, j*11, offsetY, true);
         chopN(string_encrypt, 1);
-        if (loadAnimation) restartTimer50ms();
+        if (loadAnimation_user) restartTimer50ms();
         while(!isTimerExpired()); // Wait 2 seconds
     }
 
 
     Graphics_setForegroundColor(&g_sContext, FOREGROUND_COLOR);
-    //Graphics_drawString(&g_sContext, "LavaLamp", -1, 0, 0, true);
-    //Graphics_drawString(&g_sContext, "Encrypt 1.0", -1, 0, 20, true);
 
     Graphics_drawLineH(&g_sContext, 0, 128, 45);
 
@@ -733,12 +861,12 @@ void mainMenuPage(uint8_t *hashedNumber, bool loadAnimation) {
                 Graphics_setBackgroundColor(&g_sContext, BACKGROUND_COLOR);
                 Graphics_drawString(&g_sContext, menuSelections[i], -1, 0, offsetY + 16*i, true);
             }
-            if (loadAnimation && !selectionChanged) restartTimer500ms();
+            if (loadAnimation_user && !selectionChanged) restartTimer500ms();
             while(!isTimerExpired()); // Wait 0.2 seconds
         }
         restartTimer200ms();
         while(!isTimerExpired()); // Wait 0.2 seconds
-        while (moveUp == 0 && moveDown == 0 && buttonPressed == 0) {};
+        while (moveUp == 0 && moveDown == 0 && joystickButtonPressed == 0) {};
         selectionChanged = true;
         if (moveUp == 1) {
             if (currentHoveredSelection == 0) {
@@ -764,45 +892,27 @@ void mainMenuPage(uint8_t *hashedNumber, bool loadAnimation) {
                 hoveredSelection[currentHoveredSelection] = true;
             }
         }
-        else if (buttonPressed == 1) {
+        else if (joystickButtonPressed == 1) {
             if (strcmp(menuSelections[currentHoveredSelection], "Generated Seed") == 0) {
                 if (loadAnimation_user) transitionPage();
-                drawIntegerPage(hashedNumber);
+                drawIntegerPage();
             }
             else if (strcmp(menuSelections[currentHoveredSelection], "Generate Random Number") == 0) {
                 if (loadAnimation_user) transitionPage();
-                generateRandomNumberPage(hashedNumber);
+                generateRandomNumberPage();
             }
             else if (strcmp(menuSelections[currentHoveredSelection], "About") == 0) {
                 if (loadAnimation_user) transitionPage();
-                aboutPage(hashedNumber);
+                aboutPage();
             }
             else if (strcmp(menuSelections[currentHoveredSelection], "Settings") == 0) {
                 if (loadAnimation_user) transitionPage();
-                settingsPage(hashedNumber);
+                settingsPage();
             }
         }
     };
 }
 
-/**
- * main.c
- */
-void main(void)
-{
-    _hwInit();
-
-    //RAND_MAX is 32767...
-    //printf("RAND_MAX is %d\n", RAND_MAX);
-
-    // Initialize and start a one-shot timer
-    Timer32_initModule(TIMER32_0_BASE, TIMER32_PRESCALER_1, TIMER32_32BIT, TIMER32_PERIODIC_MODE);
-
-    uint8_t arr[32] = {164,189,205,253,192,177,250,155,255,112,152,127,127,111,114,75,34,72,234,87,90,23,222,123,234,65,162,1,2,3,10,8};
-    uint8_t arr_test[32] = {1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9,1,2,3,4,5,6,7,8,9,1,2,3,4,5};
-    mainMenuPage(arr, loadAnimation_user);
-    //drawIntegerPage(arr);
-}
 
 
 /* This interrupt is fired whenever a conversion is completed and placed in
@@ -818,6 +928,7 @@ void ADC14_IRQHandler(void)
     /* ADC_MEM1 conversion completed */
     if(status & ADC_INT1)
     {
+        printf("In ADC handler.\n");
         // reset the movement variables
         moveUp = 0;
         moveDown = 0;
@@ -840,36 +951,33 @@ void ADC14_IRQHandler(void)
             moveDown = 1;
         }
 
-
-        // char string[10];
-        // sprintf(string, "X: %5d", resultsBuffer[0]);
-        // Graphics_drawStringCentered(&g_sContext,
-        //                                 (int8_t *)string,
-        //                                 8,
-        //                                 64,
-        //                                 50,
-        //                                 OPAQUE_TEXT);
-
-        // sprintf(string, "Y: %5d", resultsBuffer[1]);
-        // Graphics_drawStringCentered(&g_sContext,
-        //                                 (int8_t *)string,
-        //                                 8,
-        //                                 64,
-        //                                 70,
-        //                                 OPAQUE_TEXT);
-
         /* Determine if JoyStick button is pressed */
-        buttonPressed = 0;
+        joystickButtonPressed = 0;
         if (!(P4IN & GPIO_PIN1))
-            buttonPressed = 1;
-
-        // sprintf(string, "Button: %d", buttonPressed);
-        // Graphics_drawStringCentered(&g_sContext,
-        //                                 (int8_t *)string,
-        //                                 AUTO_STRING_LENGTH,
-        //                                 64,
-        //                                 90,
-        //                                 OPAQUE_TEXT);
+            joystickButtonPressed = 1;
     }
 }
 
+void PORT5_IRQHandler(void)
+{
+    //rightUpButtonPressed = 0;
+    __disable_irq();
+    if (P5->IFG & BIT1){
+        rightUpButtonPressed = 1;
+        P5->IFG &= ~BIT1;
+        printf("Button Up pressed.\n");
+    }
+    __enable_irq();
+}
+
+void PORT3_IRQHandler(void)
+{
+    //rightDownButtonPressed = 0;
+    __disable_irq();
+    if (P3->IFG & BIT5){
+        rightDownButtonPressed = 1;
+        P3->IFG &= ~BIT5;
+        printf("Button Down pressed.\n");
+    }
+    __enable_irq();
+}
