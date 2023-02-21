@@ -25,4 +25,9 @@
 #define url "api.telegram.org"
 #define HTTP_PORT 443
 
+#define GPIO_14 14
+#define GPIO_12 12
+#define RXData GPIO_14 
+#define TXData GPIO_12
+
 #endif

@@ -65,11 +65,14 @@ void initialiseCamera()
     }
   }
 }
+
 void setup()
 {
   Serial.begin(115200);
   // To get low level debug if activated in platformio.ini
   Serial.setDebugOutput(false);
+  
+  Serial1.begin(115200, SERIAL_8N1, RXData, TXData);
 
   WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
   delay(1000); // wait for WiFi to disconnect
@@ -287,6 +290,12 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
     //  Serial.print(rgb[i]);
     //}
     uint8_t * randomNumber = parseRandomNumber(rgb);
+
+    // Send the data to the MSP
+    Serial1.write(randomNumber, 32);
+
+    Serial.printf("Data sent: ");
+
     for(int i=0; i<32; i++){
       Serial.printf("%d", randomNumber[i]);
     }
