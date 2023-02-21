@@ -45,8 +45,6 @@ The project consists in a system that generate seeds using a Lava Lamp as a sour
 ├── ESP32-Wrover-Cam
 │   ├── include
 │   │   └── README
-│   ├── lib
-│   │   └── README
 │   ├── platformio.ini
 │   ├── src
 │   │   ├── config.h
@@ -117,9 +115,12 @@ git clone https://github.com/luiss07/LavaLampEncryption.git
 2. Create the ``` src/secrets.h ``` file and set the following parameters:
 
 ``` c++
+#ifndef __SECRETS_H__
+#define __SECRETS_H__
 #define WIFI_SSID "your_wifi_ssid"
 #define WIFI_PASSWORD "your_wifi_password"
 #define TOKEN "your_telegram_bot_token"
+#endif
 ```
 
 3. Connect the ESP32 to your computer
