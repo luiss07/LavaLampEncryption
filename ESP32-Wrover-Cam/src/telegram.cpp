@@ -8,7 +8,7 @@ message send_request(String method, String api_request, String params)
   if (method == "POST" && api_request == "sendPhoto")
   {
     // The request string is the call to the telegram api
-    String request = method + " /bot" + token + "/" + api_request + " HTTP/1.1";
+    String request = method + " /bot" + TOKEN + "/" + api_request + " HTTP/1.1";
     String host_line = "Host: " + String(url);
     Serial.println("Uploading...");
     client.connect(url, HTTP_PORT);
@@ -59,7 +59,7 @@ message send_request(String method, String api_request, String params)
   }
   else if (method == "GET" || method == "POST")
   {
-    String request = method + " /bot" + token + "/" + api_request + "?" + params + " HTTP/1.1\r\nHost: " + url + "\r\n";
+    String request = method + " /bot" + TOKEN + "/" + api_request + "?" + params + " HTTP/1.1\r\nHost: " + url + "\r\n";
     request += "Connection: close\r\n\r\n";
     if (client.connect(url, HTTP_PORT))
     {
