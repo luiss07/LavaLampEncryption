@@ -9,6 +9,8 @@
 #include "config.h"
 #include "secrets.h"
 #define NUMBER_COMMAND "/num"
+#define GEN_COMMAND "/gen"
+
 
 
 extern WiFiClientSecure client;

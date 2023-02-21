@@ -1,8 +1,16 @@
 #include "sha/sha256.h"
 #include "esp_timer.h"
 #include "telegram.h"
-
-uint8_t * parseRandomNumber(uint8_t *rgb);
+#include "mbedtls/ecdh.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/error.h"
+#include <iostream>
+#include <iomanip>
+#include <random>
+#include <sstream>
+uint8_t *parseRandomNumber(uint8_t *rgb);
 
 sha256_hasher_t hasher;
 
@@ -72,17 +80,27 @@ void setup()
   Serial.setDebugOutput(false);
 
   WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
-  delay(1000); // wait for WiFi to disconnect
+  delay(1000);       // wait for WiFi to disconnect
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  if (SERIAL_DEBUG) { Serial.print("Connecting to Wifi"); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.print("Connecting to Wifi");
+  }
   while (WiFi.status() != WL_CONNECTED)
   {
-    if (SERIAL_DEBUG) { Serial.print("."); }
+    if (SERIAL_DEBUG)
+    {
+      Serial.print(".");
+    }
     delay(3000);
   }
 
-  if (SERIAL_DEBUG) { Serial.println(); Serial.println("WiFi connected!"); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.println();
+    Serial.println("WiFi connected!");
+  }
 
   // Mount SPIFFS file system
   if (!SPIFFS.begin(true))
@@ -244,7 +262,7 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
   {
     Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
   }
-  void *ptrVal = NULL;                                      // create a pointer for memory location to store the data
+  void *ptrVal = NULL;                                // create a pointer for memory location to store the data
   uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
   if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
   { // check if there is enough psram available
@@ -282,12 +300,13 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
   if (SERIAL_DEBUG)
   {
     Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-    //for (uint32_t i = 0; i < PTRVAL_LEN; i++)
+    // for (uint32_t i = 0; i < PTRVAL_LEN; i++)
     //{
-    //  Serial.print(rgb[i]);
-    //}
-    uint8_t * randomNumber = parseRandomNumber(rgb);
-    for(int i=0; i<32; i++){
+    //   Serial.print(rgb[i]);
+    // }
+    uint8_t *randomNumber = parseRandomNumber(rgb);
+    for (int i = 0; i < 32; i++)
+    {
       Serial.printf("%d", randomNumber[i]);
     }
     Serial.println();
@@ -335,22 +354,22 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
 
   // only free ptrVal when we have stopped using it
   // heap_caps_free(ptrVal);
-  
+
   heap_caps_free(ptrVal);
   return true; // rgb data
 
 } // readRGBImage
 
-uint8_t * parseRandomNumber(uint8_t *rgb)
+uint8_t *parseRandomNumber(uint8_t *rgb)
 {
   Sha256.initHmac(rgb, PTRVAL_LEN);
-  uint8_t * result = Sha256.resultHmac();
+  uint8_t *result = Sha256.resultHmac();
 
-  //for (uint32_t i = 0; i < 5; i++)
+  // for (uint32_t i = 0; i < 5; i++)
   //{
-  //  Serial.printf("%d ", rgb[i]);
-  //}
-  //Serial.println();
+  //   Serial.printf("%d ", rgb[i]);
+  // }
+  // Serial.println();
 
   return result;
 }
@@ -358,24 +377,45 @@ uint8_t * parseRandomNumber(uint8_t *rgb)
 void loop()
 {
   // check if the wifi is connected
-  if (WiFi.status() != WL_CONNECTED) {
-    if (SERIAL_DEBUG) { Serial.println("WiFi suddenly disconnected!"); }
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("WiFi suddenly disconnected!");
+    }
 
     WiFi.disconnect(); // reset wifi
     delay(1000);
 
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     // wait for the wifi to connect
-    if (SERIAL_DEBUG) { Serial.print("Connecting to WiFi"); }
-    while( WiFi.status() != WL_CONNECTED){
-      if (SERIAL_DEBUG) { Serial.print("."); }
+    if (SERIAL_DEBUG)
+    {
+      Serial.print("Connecting to WiFi");
+    }
+    while (WiFi.status() != WL_CONNECTED)
+    {
+      if (SERIAL_DEBUG)
+      {
+        Serial.print(".");
+      }
       delay(3000);
     }
-    if (SERIAL_DEBUG) { Serial.println(); Serial.println("WiFi connnected"); }
+    if (SERIAL_DEBUG)
+    {
+      Serial.println();
+      Serial.println("WiFi connnected");
+    }
   }
-  if (SERIAL_DEBUG) { Serial.println("calling update..."); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.println("calling update...");
+  }
   message update = getUpdate();
-  if (SERIAL_DEBUG) { Serial.printf("chat id: %d\n", update.chat_id); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("chat id: %d\n", update.chat_id);
+  }
   // 788963490 is my telegram id to avoid that anyone can get photos
   if (update.chat_id != 0 && update.text == "/photo" &&
       (update.user_id == 788963490 || update.user_id == 213298805 || update.user_id == 206312359))
@@ -384,53 +424,139 @@ void loop()
     camera_fb_t *fb = NULL;
     fb = esp_camera_fb_get();
 
-    uint8_t * rgb;
+    uint8_t *rgb;
 
     capturePhotoSaveSpiffs(fb);
     sendCameraPhoto(update.chat_id, fb);
     // delay(5000);
     readRGBImage(fb, rgb);
-    
+
     esp_camera_fb_return(fb);
   }
-  else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND){
+  else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND)
+  {
     long int min = 0;
     long int max = 100;
     bool max_is_zero = false;
-    char * pEnd;
+    char *pEnd;
     bool respond = true;
-    if (update.text.length() > 4){
+    if (update.text.length() > 4)
+    {
       long int min_tmp, max_tmp;
       // to move the pointer to the beginning of the numbers
       // TODO handle case in which user puts numbers that are out of bound
-      min_tmp = strtol(update.text.c_str()+sizeof(NUMBER_COMMAND)/sizeof(const char), &pEnd, 10);
+      min_tmp = strtol(update.text.c_str() + sizeof(NUMBER_COMMAND) / sizeof(const char), &pEnd, 10);
       Serial.println(min_tmp);
-      if (*(pEnd+1) == '0' && *(pEnd+2) == '\0'){
+      if (*(pEnd + 1) == '0' && *(pEnd + 2) == '\0')
+      {
         max_is_zero = true;
       }
       max_tmp = strtol(pEnd, NULL, 10);
       Serial.print("Max ");
       Serial.println(max_tmp);
-      if (min_tmp == 0){
+      if (min_tmp == 0)
+      {
         update.reply("Invalid syntax: correct syntax is /num min max");
         respond = false;
       }
-      else if (max_tmp == 0 && !max_is_zero){
+      else if (max_tmp == 0 && !max_is_zero)
+      {
         max = min_tmp;
       }
-      else {
+      else
+      {
         min = min_tmp;
         max = max_tmp;
       }
     }
-    if (respond && min > max){
+    if (respond && min > max)
+    {
       update.reply("Min value can't be bigger than max value");
       respond = false;
     }
-    if (respond){
+    if (respond)
+    {
       update.reply("1");
     }
   }
 
+  else if (update.chat_id != 0 && update.text == GEN_COMMAND)
+  {
+    uint8_t hashedNumber[32] = {164, 189, 205, 253, 192, 177, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
+    mbedtls_aes_context aes;
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    mbedtls_entropy_init(&entropy);
+    mbedtls_ctr_drbg_init(&ctr_drbg);
+    String seed_str = String(hashedNumber[0]);
+    int last_i = 0;
+    for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
+    {
+      seed_str += String(hashedNumber[i]);
+      last_i = i;
+    }
+    if (seed_str.length() < 32)
+    {
+      for (int i = 0; seed_str.length() != 32 && i < String(hashedNumber[last_i]).length(); i++)
+      {
+        seed_str[seed_str.length()] = String(hashedNumber[last_i])[i];
+        last_i++;
+      }
+    }
+    unsigned char iv[16];
+
+    // seed the entropy source manually based on a user-provided seed
+    mbedtls_entropy_update_manual(&entropy, (const unsigned char *)&hashedNumber, sizeof(hashedNumber));
+
+    // initialize the random number generator
+    mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, NULL, 0);
+
+    // generate a random 128-bit IV
+    mbedtls_ctr_drbg_random(&ctr_drbg, iv, 16);
+    update.reply(String("Key generated: ") + seed_str);
+    update.reply(String("IV generated: ") + String(iv, 16));
+    mbedtls_entropy_free(&entropy);
+    mbedtls_aes_free(&aes);
+    mbedtls_ctr_drbg_free(&ctr_drbg);
+
+  }
+  else if (update.chat_id != 0 && update.text == "decrypt")
+  {
+    mbedtls_aes_context ctx;
+    
+    // TODO fix small things about this
+    mbedtls_aes_init(&ctx);
+    // this should be only the key that should be 32 bits
+    mbedtls_aes_setkey_dec(&ctx, (const unsigned char *)update.text.c_str(), 256); // set decryption key
+
+    // decrypt data
+    // Will be taken from user input or in some other way
+    int data_size = 32;
+    unsigned char ciphertext[32];
+    unsigned char decrypted[32];
+    // in this case update.text.c_str() is the iv that will be taken from user
+    mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, data_size, (unsigned char *)update.text.c_str(), ciphertext, decrypted);
+
+    // remove padding (if any)
+    size_t padding = decrypted[data_size - 1];
+    size_t padded_size = data_size + padding;
+    if (padding > 0 && padding <= 16)
+    {
+      for (size_t i = data_size - padding; i < data_size; i++)
+      {
+        if (decrypted[i] != padding)
+        {
+          // invalid padding
+          break;
+        }
+      }
+      padded_size = data_size - padding;
+    }
+
+    // print decrypted plaintext
+    update.reply(String((const char *) &decrypted));
+
+    mbedtls_aes_free(&ctx);
+  }
   delay(200);
 }
