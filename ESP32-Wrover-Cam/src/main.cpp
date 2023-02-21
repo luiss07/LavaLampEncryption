@@ -388,8 +388,46 @@ void loop()
     sendCameraPhoto(update.chat_id, fb);
     // delay(5000);
     readRGBImage(fb, rgb);
-
+    
     esp_camera_fb_return(fb);
+  }
+  else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND){
+    long int min = 0;
+    long int max = 100;
+    bool max_is_zero = false;
+    char * pEnd;
+    bool respond = true;
+    if (update.text.length() > 4){
+      long int min_tmp, max_tmp;
+      // to move the pointer to the beginning of the numbers
+      // TODO handle case in which user puts numbers that are out of bound
+      min_tmp = strtol(update.text.c_str()+sizeof(NUMBER_COMMAND)/sizeof(const char), &pEnd, 10);
+      Serial.println(min_tmp);
+      if (*(pEnd+1) == '0' && *(pEnd+2) == '\0'){
+        max_is_zero = true;
+      }
+      max_tmp = strtol(pEnd, NULL, 10);
+      Serial.print("Max ");
+      Serial.println(max_tmp);
+      if (min_tmp == 0){
+        update.reply("Invalid syntax: correct syntax is /num min max");
+        respond = false;
+      }
+      else if (max_tmp == 0 && !max_is_zero){
+        max = min_tmp;
+      }
+      else {
+        min = min_tmp;
+        max = max_tmp;
+      }
+    }
+    if (respond && min > max){
+      update.reply("Min value can't be bigger than max value");
+      respond = false;
+    }
+    if (respond){
+      update.reply("1");
+    }
   }
 
   delay(200);
