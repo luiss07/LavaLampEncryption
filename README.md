@@ -88,10 +88,10 @@ The ``` MSP432 ``` folder contains the code for the MSP432. The code is written 
 
 ## Prerequisites
 
-- [Visual Studio Code](https://code.visualstudio.com/)
-- [PlatformIO extension](https://platformio.org/install/ide?install=vscode)
-- [CCS](http://www.ti.com/tool/CCSTUDIO)
-- [MSP432P401R support]()
+:white_check_mark: [Visual Studio Code](https://code.visualstudio.com/)
+:white_check_mark: [PlatformIO extension](https://platformio.org/install/ide?install=vscode)
+:white_check_mark: [CCS](http://www.ti.com/tool/CCSTUDIO)
+:white_check_mark: [MSP432P401R support]()
 
 We assume that you have already installed ```Visual Studio Code``` with ``` PlatformIO ``` extension and ```CCS``` with the MSP432P401R support. If you haven't done it yet, please follow the instructions in the links above.
 
@@ -105,8 +105,9 @@ git clone https://github.com/luiss07/LavaLampEncryption.git
 
 1. Open the ``` MSP432 ``` folder in CCS
 2. Include the following libraries in the project:
-    - ``` LcdDriver ``` TODO da sistemare
-    - ``` driverLib ``` 
+    - ``` LcdDriver ```( already included in the repository )
+    - ``` driverLib ``` :arrow_right: [Download](https://drive.google.com/file/d/1krZfBNAFiE6yAChQfHZVE-b0wfuDitgV/view) :arrow_right: follow the [DriverLibInstruction](./MSP432/driverLibInstruction.md) to install the library.
+
 3. Build and upload the code
 
 ## ESP32-Wrover-Cam
