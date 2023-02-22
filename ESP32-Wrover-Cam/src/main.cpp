@@ -7,9 +7,10 @@ uint8_t *parseRandomNumber(uint8_t *rgb);
 
 sha256_hasher_t hasher;
 
-//WiFiClientSecure client;
+WiFiClientSecure client;
 
-unsigned char IV[16] = "H0xuA1JmL7kNpS4";
+uint8_t hashedNumberList[32] = {164, 189, 205, 253, 192, 100, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
+uint8_t *hashedNumber = hashedNumberList;
 
 void initialiseCamera()
 {
@@ -39,17 +40,7 @@ void initialiseCamera()
   config.frame_size = FRAMESIZE_VGA; // (640 x 480);
   config.jpeg_quality = 16;
   config.fb_count = 1;
-  /*
-  if (psramFound()) {
-    config.frame_size = FRAMESIZE_VGA // (640 x 480);
-    config.jpeg_quality = 10;
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
-  */
+
   // Camera init
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
@@ -73,7 +64,7 @@ void setup()
   Serial.begin(115200);
   // To get low level debug if activated in platformio.ini
   Serial.setDebugOutput(false);
-
+  Serial1.begin(115200, SERIAL_8N1, RXData, TXData);
   WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
   delay(1000);       // wait for WiFi to disconnect
 
@@ -257,7 +248,7 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
   {
     Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
   }
-  void *ptrVal = NULL;                                      // create a pointer for memory location to store the data
+  void *ptrVal = NULL;                                // create a pointer for memory location to store the data
   uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
   if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
   { // check if there is enough psram available
@@ -292,15 +283,14 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
     }
     return false;
   }
+  Serial1.write(hashedNumber, 32);
   if (SERIAL_DEBUG)
   {
     Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-
-       Serial.printf("Data sent: ");
-
+    hashedNumber = parseRandomNumber(rgb);
     for (int i = 0; i < 32; i++)
     {
-      Serial.printf("%d", randomNumber[i]);
+      Serial.printf("%d", hashedNumber[i]);
     }
     Serial.println();
   }
@@ -358,11 +348,11 @@ uint8_t *parseRandomNumber(uint8_t *rgb)
   Sha256.initHmac(rgb, PTRVAL_LEN);
   uint8_t *result = Sha256.resultHmac();
 
-  //for (uint32_t i = 0; i < 5; i++)
+  // for (uint32_t i = 0; i < 5; i++)
   //{
-  //  Serial.printf("%d ", rgb[i]);
-  //}
-  //Serial.println();
+  //   Serial.printf("%d ", rgb[i]);
+  // }
+  // Serial.println();
 
   return result;
 }
@@ -408,6 +398,8 @@ void loop()
   if (SERIAL_DEBUG)
   {
     Serial.printf("chat id: %d\n", update.chat_id);
+    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1));
+    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND);
   }
   // 788963490 is my telegram id to avoid that anyone can get photos
   if (update.chat_id != 0 && update.text == "/photo" &&
@@ -437,7 +429,6 @@ void loop()
     {
       long int min_tmp, max_tmp;
       // to move the pointer to the beginning of the numbers
-      // TODO handle case in which user puts numbers that are out of bound
       min_tmp = strtol(update.text.c_str() + sizeof(NUMBER_COMMAND) / sizeof(const char), &pEnd, 10);
       Serial.println(min_tmp);
       if (*(pEnd + 1) == '0' && *(pEnd + 2) == '\0')
@@ -469,12 +460,28 @@ void loop()
     }
     if (respond)
     {
-      update.reply("1");
+      String seed_str = String(hashedNumber[0]);
+      int last_i = 0;
+      for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
+      {
+        seed_str += String(hashedNumber[i]);
+        last_i = i;
+      }
+      if (seed_str.length() < 32)
+      {
+        for (int i = 0; seed_str.length() != 32 && atoll((seed_str + String(hashedNumber[i])).c_str()); i++)
+        {
+          seed_str += String(hashedNumber[last_i])[i];
+          last_i++;
+        }
+        srand(atoll(seed_str.c_str()));
+        std::uniform_int_distribution<int>  distr(min, max);
+        update.reply(String(min + ( std::rand() % max )));
+      }
     }
   }
   else if (update.chat_id != 0 && update.text == GEN_COMMAND)
   {
-    uint8_t hashedNumber[32] = {164, 189, 205, 253, 192, 177, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
     String seed_str = String(hashedNumber[0]);
     int last_i = 0;
     for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
@@ -486,7 +493,7 @@ void loop()
     {
       for (int i = 0; seed_str.length() != 32 && i < String(hashedNumber[last_i]).length(); i++)
       {
-        seed_str[seed_str.length()] = String(hashedNumber[last_i])[i];
+        seed_str += String(hashedNumber[last_i])[i];
         last_i++;
       }
     }
@@ -496,6 +503,7 @@ void loop()
   {
     unsigned char plaintext[CIPHERTEXT_SIZE];
     unsigned char ciphertext[CIPHERTEXT_SIZE];
+
     const char *actual_pos = update.text.c_str();
     actual_pos += sizeof(ENCRYPTION_COMMAND) / sizeof(const char);
     if (update.text.length() < (sizeof(ENCRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
@@ -508,25 +516,37 @@ void loop()
     {
       key[i] = *actual_pos;
     }
-    /*
-    UNCOMMENT TO MAKE PROGRAM CRASH EVEN IF THIS BLOCK IS NEVER REACHED
-    if (update.text.length() > (sizeof(ENCRYPTION_COMMAND) / sizeof(const char) + 32 + CYPHERTEXT_SIZE)){
-      update.reply(String("Message too long, maximum message size is 128"));
-      return;
-    }
-    */
+
     actual_pos++;
     int plain_len = 0;
-    for (int i = 0; i < CIPHERTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
+    for (int i = 0; i < PLAINTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
     {
       plaintext[i] = *actual_pos;
     }
+    Serial.println(plain_len);
     mbedtls_aes_context aes;
     mbedtls_aes_init(&aes);
+    if (plain_len % 16 != 0)
+    {
+      int padding_len = 16 - plain_len % 16;
+      for (int i = plain_len; i < padding_len; i++)
+      {
+        plaintext[i] = (char)padding_len;
+      }
+      plain_len += padding_len;
+    }
+    plaintext[plain_len] = '\0';
 
     // set the AES key and IV
-    mbedtls_aes_setkey_enc(&aes, key, 128);
-    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, plain_len, IV, plaintext, ciphertext);
+    int cipher_len = ((plain_len) / 16);
+    if ((plain_len) % 16 != 0)
+    {
+      cipher_len += 1;
+    }
+    Serial.println(plain_len);
+    cipher_len *= 32;
+    mbedtls_aes_setkey_enc(&aes, key, 256);
+    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, plaintext, ciphertext);
     mbedtls_aes_free(&aes);
     std::stringstream ss;
     ss << "Encrypted message: ";
@@ -535,49 +555,56 @@ void loop()
     ss << std::hex;
 
     // Iterate through the ciphertext array and add each byte to the stringstream
-    for (size_t i = 0; i < CIPHERTEXT_SIZE; i++) {
-        ss << static_cast<unsigned>(ciphertext[i]);
-    }
-    update.reply(String(ss.str().c_str(), CIPHERTEXT_SIZE));
-  }
-  else if (update.chat_id != 0 && update.text == "decrypt")
-  {
-    mbedtls_aes_context ctx;
-
-    // TODO fix small things about this
-    mbedtls_aes_init(&ctx);
-    // this should be only the key that should be 32 bits
-    mbedtls_aes_setkey_dec(&ctx, (const unsigned char *)update.text.c_str(), 256); // set decryption key
-
-    // decrypt data
-    // Will be taken from user input or in some other way
-    int data_size = 32;
-    unsigned char ciphertext[32];
-    unsigned char decrypted[32];
-    IV[15] = 'w';
-
-    mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, data_size, IV, ciphertext, decrypted);
-
-    // remove padding (if any)
-    size_t padding = decrypted[data_size - 1];
-    size_t padded_size = data_size + padding;
-    if (padding > 0 && padding <= 16)
+    for (size_t i = 0; i < cipher_len; i++)
     {
-      for (size_t i = data_size - padding; i < data_size; i++)
-      {
-        if (decrypted[i] != padding)
-        {
-          // invalid padding
-          break;
-        }
-      }
-      padded_size = data_size - padding;
+      ss << static_cast<unsigned>(ciphertext[i]);
     }
+    update.reply(String(ss.str().c_str(), cipher_len + 19));
+  }
+  else if (update.chat_id != 0 && update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND)
+  {
+    mbedtls_aes_context aes;
 
-    // print decrypted plaintext
-    update.reply(String((const char *)&decrypted));
+    mbedtls_aes_init(&aes);
+    unsigned char decrypted[CIPHERTEXT_SIZE];
+    unsigned char ciphertext[CIPHERTEXT_SIZE];
+    const char *actual_pos = update.text.c_str();
+    actual_pos += sizeof(DECRYPTION_COMMAND) / sizeof(const char);
+    if (update.text.length() < (sizeof(DECRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
+    {
+      update.reply(String("Invalid syntax, correct syntax: /decrypt KEY(long 32 char) message"));
+      return;
+    }
+    unsigned char key[32];
+    for (int i = 0; i < 32; i++, actual_pos++)
+    {
+      key[i] = *actual_pos;
+    }
+    mbedtls_aes_setkey_dec(&aes, key, 256); // set decryption key
+    actual_pos++;
+    int plain_len = 0;
+    for (int i = 0; i < CIPHERTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
+    {
+      ciphertext[i] = *actual_pos;
+    }
+    plain_len /= 2;
+    // decrypt data
+    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_DECRYPT, ciphertext, decrypted);
 
-    mbedtls_aes_free(&ctx);
+    mbedtls_aes_free(&aes);
+    std::stringstream ss;
+    ss << "Decrypted message: ";
+
+    // Set the output stream to print in hexadecimal format
+    ss << std::hex;
+
+    // Iterate through the ciphertext array and add each byte to the stringstream
+    for (size_t i = 0; i < plain_len; i++)
+    {
+      ss << static_cast<unsigned>(decrypted[i]);
+    }
+    ss << '\0';
+    update.reply(String(ss.str().c_str()));
   }
   delay(200);
 }

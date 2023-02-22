@@ -11,10 +11,11 @@
 #define NUMBER_COMMAND "/num"
 #define GEN_COMMAND "/gen"
 #define ENCRYPTION_COMMAND "/crypt"
+#define DECRYPTION_COMMAND "/decrypt"
 
 
 
-inline WiFiClientSecure client;
+extern WiFiClientSecure client;
 
 struct message
 {
