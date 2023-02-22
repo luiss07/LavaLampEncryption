@@ -356,9 +356,11 @@ void loop()
     Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1));
     Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND);
   }
-  if (Serial1.available() > 0){
+  if (Serial1.available() > 0)
+  {
     String receivedData = Serial1.readString();
-    if (receivedData == "GetPhoto"){
+    if (receivedData == "GetPhoto")
+    {
       camera_fb_t *fb = NULL;
       fb = esp_camera_fb_get();
 
@@ -429,7 +431,7 @@ void loop()
     if (respond)
     {
       std::uniform_int_distribution<int> distr(min, max);
-      update.reply(String(min + (std::rand() % max)));
+      update.reply(String(min + rand() % (max - min + 1)));
     }
   }
   else if (update.chat_id != 0 && update.text == GEN_COMMAND)
