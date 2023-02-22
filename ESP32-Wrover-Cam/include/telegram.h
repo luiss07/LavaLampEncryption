@@ -9,6 +9,10 @@
 #include "config.h"
 #include "secrets.h"
 #define NUMBER_COMMAND "/num"
+#define GEN_COMMAND "/gen"
+#define ENCRYPTION_COMMAND "/crypt"
+#define DECRYPTION_COMMAND "/decrypt"
+
 
 
 extern WiFiClientSecure client;

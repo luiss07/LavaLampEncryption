@@ -24,6 +24,8 @@
 #define FILE_PHOTO "/photo.jpeg"
 #define url "api.telegram.org"
 #define HTTP_PORT 443
+#define CIPHERTEXT_SIZE 128
+#define PLAINTEXT_SIZE 31
 
 #define GPIO_14 14
 #define GPIO_12 12

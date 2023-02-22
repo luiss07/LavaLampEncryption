@@ -1,12 +1,16 @@
 #include "sha/sha256.h"
 #include "esp_timer.h"
 #include "telegram.h"
-
-uint8_t * parseRandomNumber(uint8_t *rgb);
+#include <random>
+#include <sstream>
+uint8_t *parseRandomNumber(uint8_t *rgb);
 
 sha256_hasher_t hasher;
 
 WiFiClientSecure client;
+
+uint8_t hashedNumberList[32] = {164, 189, 205, 253, 192, 100, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
+uint8_t *hashedNumber = hashedNumberList;
 
 void initialiseCamera()
 {
@@ -36,17 +40,7 @@ void initialiseCamera()
   config.frame_size = FRAMESIZE_VGA; // (640 x 480);
   config.jpeg_quality = 16;
   config.fb_count = 1;
-  /*
-  if (psramFound()) {
-    config.frame_size = FRAMESIZE_VGA // (640 x 480);
-    config.jpeg_quality = 10;
-    config.fb_count = 2;
-  } else {
-    config.frame_size = FRAMESIZE_SVGA;
-    config.jpeg_quality = 12;
-    config.fb_count = 1;
-  }
-  */
+
   // Camera init
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK)
@@ -65,27 +59,34 @@ void initialiseCamera()
     }
   }
 }
-
 void setup()
 {
   Serial.begin(115200);
   // To get low level debug if activated in platformio.ini
   Serial.setDebugOutput(false);
-  
   Serial1.begin(115200, SERIAL_8N1, RXData, TXData);
-
   WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
-  delay(1000); // wait for WiFi to disconnect
+  delay(1000);       // wait for WiFi to disconnect
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  if (SERIAL_DEBUG) { Serial.print("Connecting to Wifi"); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.print("Connecting to Wifi");
+  }
   while (WiFi.status() != WL_CONNECTED)
   {
-    if (SERIAL_DEBUG) { Serial.print("."); }
+    if (SERIAL_DEBUG)
+    {
+      Serial.print(".");
+    }
     delay(3000);
   }
 
-  if (SERIAL_DEBUG) { Serial.println(); Serial.println("WiFi connected!"); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.println();
+    Serial.println("WiFi connected!");
+  }
 
   // Mount SPIFFS file system
   if (!SPIFFS.begin(true))
@@ -247,7 +248,7 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
   {
     Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
   }
-  void *ptrVal = NULL;                                      // create a pointer for memory location to store the data
+  void *ptrVal = NULL;                                // create a pointer for memory location to store the data
   uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
   if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
   { // check if there is enough psram available
@@ -282,20 +283,14 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
     }
     return false;
   }
-
-  uint8_t * randomNumber = parseRandomNumber(rgb);
-
-  // Send the data to the MSP
-  Serial1.write(randomNumber, 32);
-
+  Serial1.write(hashedNumber, 32);
   if (SERIAL_DEBUG)
   {
     Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-
-    Serial.printf("Data sent: ");
-
-    for(int i=0; i<32; i++){
-      Serial.printf("%d", randomNumber[i]);
+    hashedNumber = parseRandomNumber(rgb);
+    for (int i = 0; i < 32; i++)
+    {
+      Serial.printf("%d", hashedNumber[i]);
     }
     Serial.println();
   }
@@ -342,22 +337,22 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
 
   // only free ptrVal when we have stopped using it
   // heap_caps_free(ptrVal);
-  
+
   heap_caps_free(ptrVal);
   return true; // rgb data
 
 } // readRGBImage
 
-uint8_t * parseRandomNumber(uint8_t *rgb)
+uint8_t *parseRandomNumber(uint8_t *rgb)
 {
   Sha256.initHmac(rgb, PTRVAL_LEN);
-  uint8_t * result = Sha256.resultHmac();
+  uint8_t *result = Sha256.resultHmac();
 
-  //for (uint32_t i = 0; i < 5; i++)
+  // for (uint32_t i = 0; i < 5; i++)
   //{
-  //  Serial.printf("%d ", rgb[i]);
-  //}
-  //Serial.println();
+  //   Serial.printf("%d ", rgb[i]);
+  // }
+  // Serial.println();
 
   return result;
 }
@@ -365,24 +360,47 @@ uint8_t * parseRandomNumber(uint8_t *rgb)
 void loop()
 {
   // check if the wifi is connected
-  if (WiFi.status() != WL_CONNECTED) {
-    if (SERIAL_DEBUG) { Serial.println("WiFi suddenly disconnected!"); }
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    if (SERIAL_DEBUG)
+    {
+      Serial.println("WiFi suddenly disconnected!");
+    }
 
     WiFi.disconnect(); // reset wifi
     delay(1000);
 
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     // wait for the wifi to connect
-    if (SERIAL_DEBUG) { Serial.print("Connecting to WiFi"); }
-    while( WiFi.status() != WL_CONNECTED){
-      if (SERIAL_DEBUG) { Serial.print("."); }
+    if (SERIAL_DEBUG)
+    {
+      Serial.print("Connecting to WiFi");
+    }
+    while (WiFi.status() != WL_CONNECTED)
+    {
+      if (SERIAL_DEBUG)
+      {
+        Serial.print(".");
+      }
       delay(3000);
     }
-    if (SERIAL_DEBUG) { Serial.println(); Serial.println("WiFi connnected"); }
+    if (SERIAL_DEBUG)
+    {
+      Serial.println();
+      Serial.println("WiFi connnected");
+    }
   }
-  if (SERIAL_DEBUG) { Serial.println("calling update..."); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.println("calling update...");
+  }
   message update = getUpdate();
-  if (SERIAL_DEBUG) { Serial.printf("chat id: %d\n", update.chat_id); }
+  if (SERIAL_DEBUG)
+  {
+    Serial.printf("chat id: %d\n", update.chat_id);
+    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1));
+    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND);
+  }
   // 788963490 is my telegram id to avoid that anyone can get photos
   if (update.chat_id != 0 && update.text == "/photo" &&
       (update.user_id == 788963490 || update.user_id == 213298805 || update.user_id == 206312359))
@@ -391,53 +409,202 @@ void loop()
     camera_fb_t *fb = NULL;
     fb = esp_camera_fb_get();
 
-    uint8_t * rgb;
+    uint8_t *rgb;
 
     capturePhotoSaveSpiffs(fb);
     sendCameraPhoto(update.chat_id, fb);
     // delay(5000);
     readRGBImage(fb, rgb);
-    
+
     esp_camera_fb_return(fb);
   }
-  else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND){
+  else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND)
+  {
     long int min = 0;
     long int max = 100;
     bool max_is_zero = false;
-    char * pEnd;
+    char *pEnd;
     bool respond = true;
-    if (update.text.length() > 4){
+    if (update.text.length() > 4)
+    {
       long int min_tmp, max_tmp;
       // to move the pointer to the beginning of the numbers
-      // TODO handle case in which user puts numbers that are out of bound
-      min_tmp = strtol(update.text.c_str()+sizeof(NUMBER_COMMAND)/sizeof(const char), &pEnd, 10);
+      min_tmp = strtol(update.text.c_str() + sizeof(NUMBER_COMMAND) / sizeof(const char), &pEnd, 10);
       Serial.println(min_tmp);
-      if (*(pEnd+1) == '0' && *(pEnd+2) == '\0'){
+      if (*(pEnd + 1) == '0' && *(pEnd + 2) == '\0')
+      {
         max_is_zero = true;
       }
       max_tmp = strtol(pEnd, NULL, 10);
       Serial.print("Max ");
       Serial.println(max_tmp);
-      if (min_tmp == 0){
+      if (min_tmp == 0)
+      {
         update.reply("Invalid syntax: correct syntax is /num min max");
         respond = false;
       }
-      else if (max_tmp == 0 && !max_is_zero){
+      else if (max_tmp == 0 && !max_is_zero)
+      {
         max = min_tmp;
       }
-      else {
+      else
+      {
         min = min_tmp;
         max = max_tmp;
       }
     }
-    if (respond && min > max){
+    if (respond && min > max)
+    {
       update.reply("Min value can't be bigger than max value");
       respond = false;
     }
-    if (respond){
-      update.reply("1");
+    if (respond)
+    {
+      String seed_str = String(hashedNumber[0]);
+      int last_i = 0;
+      for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
+      {
+        seed_str += String(hashedNumber[i]);
+        last_i = i;
+      }
+      if (seed_str.length() < 32)
+      {
+        for (int i = 0; seed_str.length() != 32 && atoll((seed_str + String(hashedNumber[i])).c_str()); i++)
+        {
+          seed_str += String(hashedNumber[last_i])[i];
+          last_i++;
+        }
+        srand(atoll(seed_str.c_str()));
+        std::uniform_int_distribution<int>  distr(min, max);
+        update.reply(String(min + ( std::rand() % max )));
+      }
     }
   }
+  else if (update.chat_id != 0 && update.text == GEN_COMMAND)
+  {
+    String seed_str = String(hashedNumber[0]);
+    int last_i = 0;
+    for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
+    {
+      seed_str += String(hashedNumber[i]);
+      last_i = i;
+    }
+    if (seed_str.length() < 32)
+    {
+      for (int i = 0; seed_str.length() != 32 && i < String(hashedNumber[last_i]).length(); i++)
+      {
+        seed_str += String(hashedNumber[last_i])[i];
+        last_i++;
+      }
+    }
+    update.reply(String("Key generated: ") + seed_str);
+  }
+  else if (update.chat_id != 0 && update.text.substring(0, sizeof(ENCRYPTION_COMMAND) / sizeof(const char) - 1) == ENCRYPTION_COMMAND)
+  {
+    unsigned char plaintext[CIPHERTEXT_SIZE];
+    unsigned char ciphertext[CIPHERTEXT_SIZE];
 
+    const char *actual_pos = update.text.c_str();
+    actual_pos += sizeof(ENCRYPTION_COMMAND) / sizeof(const char);
+    if (update.text.length() < (sizeof(ENCRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
+    {
+      update.reply(String("Invalid syntax, correct syntax: /crypt KEY(long 32 char) message"));
+      return;
+    }
+    unsigned char key[32];
+    for (int i = 0; i < 32; i++, actual_pos++)
+    {
+      key[i] = *actual_pos;
+    }
+
+    actual_pos++;
+    int plain_len = 0;
+    for (int i = 0; i < PLAINTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
+    {
+      plaintext[i] = *actual_pos;
+    }
+    Serial.println(plain_len);
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    if (plain_len % 16 != 0)
+    {
+      int padding_len = 16 - plain_len % 16;
+      for (int i = plain_len; i < padding_len; i++)
+      {
+        plaintext[i] = (char)padding_len;
+      }
+      plain_len += padding_len;
+    }
+    plaintext[plain_len] = '\0';
+
+    // set the AES key and IV
+    int cipher_len = ((plain_len) / 16);
+    if ((plain_len) % 16 != 0)
+    {
+      cipher_len += 1;
+    }
+    Serial.println(plain_len);
+    cipher_len *= 32;
+    mbedtls_aes_setkey_enc(&aes, key, 256);
+    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, plaintext, ciphertext);
+    mbedtls_aes_free(&aes);
+    std::stringstream ss;
+    ss << "Encrypted message: ";
+
+    // Set the output stream to print in hexadecimal format
+    ss << std::hex;
+
+    // Iterate through the ciphertext array and add each byte to the stringstream
+    for (size_t i = 0; i < cipher_len; i++)
+    {
+      ss << static_cast<unsigned>(ciphertext[i]);
+    }
+    update.reply(String(ss.str().c_str(), cipher_len + 19));
+  }
+  else if (update.chat_id != 0 && update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND)
+  {
+    mbedtls_aes_context aes;
+
+    mbedtls_aes_init(&aes);
+    unsigned char decrypted[CIPHERTEXT_SIZE];
+    unsigned char ciphertext[CIPHERTEXT_SIZE];
+    const char *actual_pos = update.text.c_str();
+    actual_pos += sizeof(DECRYPTION_COMMAND) / sizeof(const char);
+    if (update.text.length() < (sizeof(DECRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
+    {
+      update.reply(String("Invalid syntax, correct syntax: /decrypt KEY(long 32 char) message"));
+      return;
+    }
+    unsigned char key[32];
+    for (int i = 0; i < 32; i++, actual_pos++)
+    {
+      key[i] = *actual_pos;
+    }
+    mbedtls_aes_setkey_dec(&aes, key, 256); // set decryption key
+    actual_pos++;
+    int plain_len = 0;
+    for (int i = 0; i < CIPHERTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
+    {
+      ciphertext[i] = *actual_pos;
+    }
+    plain_len /= 2;
+    // decrypt data
+    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_DECRYPT, ciphertext, decrypted);
+
+    mbedtls_aes_free(&aes);
+    std::stringstream ss;
+    ss << "Decrypted message: ";
+
+    // Set the output stream to print in hexadecimal format
+    ss << std::hex;
+
+    // Iterate through the ciphertext array and add each byte to the stringstream
+    for (size_t i = 0; i < plain_len; i++)
+    {
+      ss << static_cast<unsigned>(decrypted[i]);
+    }
+    ss << '\0';
+    update.reply(String(ss.str().c_str()));
+  }
   delay(200);
 }

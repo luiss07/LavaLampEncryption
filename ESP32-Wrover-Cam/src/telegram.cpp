@@ -4,7 +4,6 @@ int offset = 0;
 message send_request(String method, String api_request, String params)
 {
   message update;
-
   if (method == "POST" && api_request == "sendPhoto")
   {
     // The request string is the call to the telegram api
@@ -61,7 +60,14 @@ message send_request(String method, String api_request, String params)
   {
     String request = method + " /bot" + TOKEN + "/" + api_request + "?" + params + " HTTP/1.1\r\nHost: " + url + "\r\n";
     request += "Connection: close\r\n\r\n";
-    if (client.connect(url, HTTP_PORT))
+    int client_connection = 0;
+    try{
+      client_connection = client.connect(url, HTTP_PORT);
+    }
+    catch(char * e){
+      Serial.println(e);
+    }
+    if (client_connection)
     {
       // if connected:
       client.println(request);
