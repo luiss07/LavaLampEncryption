@@ -209,9 +209,9 @@ void changePage(char* currentHoveredSelection_toString)
     }
     // draw integer page warps
     else if (strcmp(currentHoveredSelection_toString, "Get new seed") == 0) {
+        char* requestBody[12] = "GetPhoto\n";
+        UART_transmitData(EUSCI_A2_BASE, requestBody);
         
-        //TODO: send the ESP a generate new seed request
-        //TODO: maybe wait some time before refreshing the page
         drawIntegerPage();
     }
     else if (strcmp(currentHoveredSelection_toString, "Go back") == 0) {
@@ -802,10 +802,8 @@ int drawLavaLampTitleAndReturnOffsetY()
 }
 
 // TODO: fix this function
-struct selectableMenuSelections setMainMenuSelections(int offsetY)
+void setMainMenuSelections(struct selectableMenuSelections* selectablemainmenuselections,int offsetY)
 {
-    struct selectableMenuSelections selectablemainmenuselections;
-
     int tempOffsetsY[MAIN_MENU_SELECTIONS] = {0, 16, 32, 48};
     int tempOffsetsX[MAIN_MENU_SELECTIONS] = {2, 2, 2, 2};
 
@@ -813,7 +811,6 @@ struct selectableMenuSelections setMainMenuSelections(int offsetY)
 
     char * tempMenuSelections[MAIN_MENU_SELECTIONS] = {"Generated Seed", "Generate Random Number", "About", "Settings"};
 
-    setSelectableMenuSections(&selectablemainmenuselections, MAIN_MENU_SELECTIONS, 0, offsetY, tempOffsetsY, tempOffsetsX, tempHoveredSelection, false, tempMenuSelections);
+    setSelectableMenuSections(selectablemainmenuselections, MAIN_MENU_SELECTIONS, 0, offsetY, tempOffsetsY, tempOffsetsX, tempHoveredSelection, false, tempMenuSelections);
 
-    return selectablemainmenuselections;
 }
