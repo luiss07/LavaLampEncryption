@@ -1,20 +1,15 @@
 #include "sha/sha256.h"
 #include "esp_timer.h"
 #include "telegram.h"
-#include "mbedtls/ecdh.h"
-#include "mbedtls/entropy.h"
-#include "mbedtls/ctr_drbg.h"
-#include "mbedtls/pk.h"
-#include "mbedtls/error.h"
-#include <iostream>
-#include <iomanip>
 #include <random>
 #include <sstream>
 uint8_t *parseRandomNumber(uint8_t *rgb);
 
 sha256_hasher_t hasher;
 
-WiFiClientSecure client;
+//WiFiClientSecure client;
+
+unsigned char IV[16] = "H0xuA1JmL7kNpS4";
 
 void initialiseCamera()
 {
@@ -479,15 +474,9 @@ void loop()
       update.reply("1");
     }
   }
-
   else if (update.chat_id != 0 && update.text == GEN_COMMAND)
   {
     uint8_t hashedNumber[32] = {164, 189, 205, 253, 192, 177, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
-    mbedtls_aes_context aes;
-    mbedtls_entropy_context entropy;
-    mbedtls_ctr_drbg_context ctr_drbg;
-    mbedtls_entropy_init(&entropy);
-    mbedtls_ctr_drbg_init(&ctr_drbg);
     String seed_str = String(hashedNumber[0]);
     int last_i = 0;
     for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
@@ -503,27 +492,60 @@ void loop()
         last_i++;
       }
     }
-    unsigned char iv[16];
-
-    // seed the entropy source manually based on a user-provided seed
-    mbedtls_entropy_update_manual(&entropy, (const unsigned char *)&hashedNumber, sizeof(hashedNumber));
-
-    // initialize the random number generator
-    mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, NULL, 0);
-
-    // generate a random 128-bit IV
-    mbedtls_ctr_drbg_random(&ctr_drbg, iv, 16);
     update.reply(String("Key generated: ") + seed_str);
-    update.reply(String("IV generated: ") + String(iv, 16));
-    mbedtls_entropy_free(&entropy);
-    mbedtls_aes_free(&aes);
-    mbedtls_ctr_drbg_free(&ctr_drbg);
+  }
+  else if (update.chat_id != 0 && update.text.substring(0, sizeof(ENCRYPTION_COMMAND) / sizeof(const char) - 1) == ENCRYPTION_COMMAND)
+  {
+    unsigned char plaintext[CIPHERTEXT_SIZE];
+    unsigned char ciphertext[CIPHERTEXT_SIZE];
+    const char *actual_pos = update.text.c_str();
+    actual_pos += sizeof(ENCRYPTION_COMMAND) / sizeof(const char);
+    if (update.text.length() < (sizeof(ENCRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
+    {
+      update.reply(String("Invalid syntax, correct syntax: /crypt KEY(long 32 char) message"));
+      return;
+    }
+    unsigned char key[32];
+    for (int i = 0; i < 32; i++, actual_pos++)
+    {
+      key[i] = *actual_pos;
+    }
+    /*
+    UNCOMMENT TO MAKE PROGRAM CRASH EVEN IF THIS BLOCK IS NEVER REACHED
+    if (update.text.length() > (sizeof(ENCRYPTION_COMMAND) / sizeof(const char) + 32 + CYPHERTEXT_SIZE)){
+      update.reply(String("Message too long, maximum message size is 128"));
+      return;
+    }
+    */
+    actual_pos++;
+    int plain_len = 0;
+    for (int i = 0; i < CIPHERTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
+    {
+      plaintext[i] = *actual_pos;
+    }
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
 
+    // set the AES key and IV
+    mbedtls_aes_setkey_enc(&aes, key, 128);
+    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, plain_len, IV, plaintext, ciphertext);
+    mbedtls_aes_free(&aes);
+    std::stringstream ss;
+    ss << "Encrypted message: ";
+
+    // Set the output stream to print in hexadecimal format
+    ss << std::hex;
+
+    // Iterate through the ciphertext array and add each byte to the stringstream
+    for (size_t i = 0; i < CIPHERTEXT_SIZE; i++) {
+        ss << static_cast<unsigned>(ciphertext[i]);
+    }
+    update.reply(String(ss.str().c_str(), CIPHERTEXT_SIZE));
   }
   else if (update.chat_id != 0 && update.text == "decrypt")
   {
     mbedtls_aes_context ctx;
-    
+
     // TODO fix small things about this
     mbedtls_aes_init(&ctx);
     // this should be only the key that should be 32 bits
@@ -534,8 +556,9 @@ void loop()
     int data_size = 32;
     unsigned char ciphertext[32];
     unsigned char decrypted[32];
-    // in this case update.text.c_str() is the iv that will be taken from user
-    mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, data_size, (unsigned char *)update.text.c_str(), ciphertext, decrypted);
+    IV[15] = 'w';
+
+    mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, data_size, IV, ciphertext, decrypted);
 
     // remove padding (if any)
     size_t padding = decrypted[data_size - 1];
@@ -554,7 +577,7 @@ void loop()
     }
 
     // print decrypted plaintext
-    update.reply(String((const char *) &decrypted));
+    update.reply(String((const char *)&decrypted));
 
     mbedtls_aes_free(&ctx);
   }

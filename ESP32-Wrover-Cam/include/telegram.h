@@ -10,10 +10,11 @@
 #include "secrets.h"
 #define NUMBER_COMMAND "/num"
 #define GEN_COMMAND "/gen"
+#define ENCRYPTION_COMMAND "/crypt"
 
 
 
-extern WiFiClientSecure client;
+inline WiFiClientSecure client;
 
 struct message
 {
