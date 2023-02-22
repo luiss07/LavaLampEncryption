@@ -209,7 +209,7 @@ void changePage(char* currentHoveredSelection_toString)
     }
     // draw integer page warps
     else if (strcmp(currentHoveredSelection_toString, "Get new seed") == 0) {
-        char* requestBody[12] = "GetPhoto\n";
+        char* requestBody[12] = "GetPhoto";
         UART_transmitData(EUSCI_A2_BASE, requestBody);
         
         drawIntegerPage();

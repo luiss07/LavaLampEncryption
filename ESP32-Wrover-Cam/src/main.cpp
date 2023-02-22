@@ -174,7 +174,6 @@ void capturePhotoSaveSpiffs(camera_fb_t *fb)
     }
     // Close the file
     file.close();
-    // esp_camera_fb_return(fb);
 
     delay(2000); // delay the saving check otherwise the check will happen too fast
 
@@ -229,19 +228,8 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
       Serial.printf("Image resolution: %d x %d\n", fb->width, fb->height);
       Serial.printf("Image size: %d bytes\n", fb->len);
       Serial.printf("Image format: %d\n", fb->format);
-      // Serial.printf("Free heap: %d bytes\n", ESP.getFreeHeap());
     }
   }
-
-  /*
-  // display captured image using base64 - seems a bit unreliable especially with larger images?
-  if (!sendRGBfile) {
-    client.print("<br>Displaying image direct from frame buffer");
-    String base64data = base64::encode(fb->buf, fb->len);      // convert buffer to base64
-    client.print(" - Base64 data length = " + String(base64data.length()) + " bytes\n" );
-    client.print("<br><img src='data:image/jpg;base64," + base64data + "'></img><br>\n");
-  }
-  */
 
   // allocate memory to store the rgb data (in psram, 3 bytes per pixel)
   if (SERIAL_DEBUG)
@@ -311,49 +299,6 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
     Serial.println();
   }
 
-  /* --- THINGS TO DO ---
-    - eventually send rgb data through uart to msp432 OR elaborate the data on the esp32 and send it to the msp432
-  */
-
-  /*
-    //   ****** examples of using the resulting RGB data *****
-
-    // display some of the resulting data
-        uint32_t resultsToShow = 50;                                                                       // how much data to display
-        sendText(client,"<br>R,G,B data for first " + String(resultsToShow / 3) + " pixels of image");
-        for (uint32_t i = 0; i < resultsToShow-2; i+=3) {
-          sendText(client,String(rgb[i+2]) + "," + String(rgb[i+1]) + "," + String(rgb[i+0]));           // Red , Green , Blue
-          // // calculate the x and y coordinate of the current pixel
-          //   uint16_t x = (i / 3) % fb->width;
-          //   uint16_t y = floor( (i / 3) / fb->width);
-        }
-
-    // find the average values for each colour over entire image
-        uint32_t aRed = 0;
-        uint32_t aGreen = 0;
-        uint32_t aBlue = 0;
-        for (uint32_t i = 0; i < (ARRAY_LENGTH - 2); i+=3) { // go through all data and add up totals
-          aBlue+=rgb[i];
-          aGreen+=rgb[i+1];
-          aRed+=rgb[i+2];
-        }
-        aRed = aRed / (fb->width * fb->height); // divide total by number of pixels to give the average value
-        aGreen = aGreen / (fb->width * fb->height);
-        aBlue = aBlue / (fb->width * fb->height);
-        sendText(client,"Average Blue = " + String(aBlue));
-        sendText(client,"Average Green = " + String(aGreen));
-        sendText(client,"Average Red = " + String(aRed));
-  delay(5000);
-  // finished with the data so free up the memory space used in psram
-  //esp_camera_fb_return(fb); // camera frame buffer
-  Serial.println("prima heap free");
-
-  //free(ptrVal);
-  */
-
-  // only free ptrVal when we have stopped using it
-  // heap_caps_free(ptrVal);
-
   heap_caps_free(ptrVal);
   return true; // rgb data
 
@@ -363,12 +308,6 @@ uint8_t *parseRandomNumber(uint8_t *rgb)
 {
   Sha256.initHmac(rgb, PTRVAL_LEN);
   uint8_t *result = Sha256.resultHmac();
-
-  // for (uint32_t i = 0; i < 5; i++)
-  //{
-  //   Serial.printf("%d ", rgb[i]);
-  // }
-  // Serial.println();
 
   return result;
 }
@@ -417,6 +356,20 @@ void loop()
     Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1));
     Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND);
   }
+  if (Serial1.available() > 0){
+    String receivedData = Serial1.readString();
+    if (receivedData == "GetPhoto"){
+      camera_fb_t *fb = NULL;
+      fb = esp_camera_fb_get();
+
+      uint8_t *rgb;
+
+      capturePhotoSaveSpiffs(fb);
+      readRGBImage(fb, rgb);
+
+      esp_camera_fb_return(fb);
+    }
+  }
   // 788963490 is my telegram id to avoid that anyone can get photos
   if (update.chat_id != 0 && update.text == "/photo" &&
       (update.user_id == 788963490 || update.user_id == 213298805 || update.user_id == 206312359))
@@ -429,7 +382,6 @@ void loop()
 
     capturePhotoSaveSpiffs(fb);
     sendCameraPhoto(update.chat_id, fb);
-    // delay(5000);
     readRGBImage(fb, rgb);
 
     esp_camera_fb_return(fb);
