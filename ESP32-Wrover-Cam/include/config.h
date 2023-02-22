@@ -2,7 +2,7 @@
 
 #define CONFIGS
 #define JSON_DESER_VERBOSE 0
-#define SERIAL_DEBUG 1 // enable comments print in serial monitor
+#define SERIAL_DEBUG 0 // enable comments print in serial monitor
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 21

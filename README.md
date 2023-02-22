@@ -148,7 +148,7 @@ git clone https://github.com/luiss07/LavaLampEncryption.git
 
 # Links
 
-<a href="" target="_blank" rel="noopener noreferrer">
+<a href="https://www.youtube.com/watch?v=YDSb96TMZ5s" target="_blank" rel="noopener noreferrer">
  <img src="https://img.shields.io/badge/YouTube-Project%20video-FF0000?style=flat-square&logo=youtube&logoColor=red" />
 </a>
 
