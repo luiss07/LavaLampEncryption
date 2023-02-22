@@ -283,11 +283,27 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
     }
     return false;
   }
+  hashedNumber = parseRandomNumber(rgb);
+  String seed_str = String(hashedNumber[0]);
+  int last_i = 0;
+  for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
+  {
+    seed_str += String(hashedNumber[i]);
+    last_i = i;
+  }
+  if (seed_str.length() < 32)
+  {
+    for (int i = 0; seed_str.length() != 32 && atoll((seed_str + String(hashedNumber[i])).c_str()); i++)
+    {
+      seed_str += String(hashedNumber[last_i])[i];
+      last_i++;
+    }
+    srand(atoll(seed_str.c_str()));
+  }
   Serial1.write(hashedNumber, 32);
   if (SERIAL_DEBUG)
   {
     Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-    hashedNumber = parseRandomNumber(rgb);
     for (int i = 0; i < 32; i++)
     {
       Serial.printf("%d", hashedNumber[i]);
@@ -460,24 +476,8 @@ void loop()
     }
     if (respond)
     {
-      String seed_str = String(hashedNumber[0]);
-      int last_i = 0;
-      for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
-      {
-        seed_str += String(hashedNumber[i]);
-        last_i = i;
-      }
-      if (seed_str.length() < 32)
-      {
-        for (int i = 0; seed_str.length() != 32 && atoll((seed_str + String(hashedNumber[i])).c_str()); i++)
-        {
-          seed_str += String(hashedNumber[last_i])[i];
-          last_i++;
-        }
-        srand(atoll(seed_str.c_str()));
-        std::uniform_int_distribution<int>  distr(min, max);
-        update.reply(String(min + ( std::rand() % max )));
-      }
+      std::uniform_int_distribution<int> distr(min, max);
+      update.reply(String(min + (std::rand() % max)));
     }
   }
   else if (update.chat_id != 0 && update.text == GEN_COMMAND)
@@ -559,7 +559,8 @@ void loop()
     {
       ss << static_cast<unsigned>(ciphertext[i]);
     }
-    update.reply(String(ss.str().c_str(), cipher_len + 19));
+    ss << '\0';
+    update.reply(String(ss.str().c_str()));
   }
   else if (update.chat_id != 0 && update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND)
   {
