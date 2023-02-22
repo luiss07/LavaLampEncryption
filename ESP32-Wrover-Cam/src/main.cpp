@@ -257,7 +257,7 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
   {
     Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
   }
-  void *ptrVal = NULL;                                // create a pointer for memory location to store the data
+  void *ptrVal = NULL;                                      // create a pointer for memory location to store the data
   uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
   if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
   { // check if there is enough psram available
@@ -295,11 +295,9 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
   if (SERIAL_DEBUG)
   {
     Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-    // for (uint32_t i = 0; i < PTRVAL_LEN; i++)
-    //{
-    //   Serial.print(rgb[i]);
-    // }
-    uint8_t *randomNumber = parseRandomNumber(rgb);
+
+       Serial.printf("Data sent: ");
+
     for (int i = 0; i < 32; i++)
     {
       Serial.printf("%d", randomNumber[i]);
@@ -360,11 +358,11 @@ uint8_t *parseRandomNumber(uint8_t *rgb)
   Sha256.initHmac(rgb, PTRVAL_LEN);
   uint8_t *result = Sha256.resultHmac();
 
-  // for (uint32_t i = 0; i < 5; i++)
+  //for (uint32_t i = 0; i < 5; i++)
   //{
-  //   Serial.printf("%d ", rgb[i]);
-  // }
-  // Serial.println();
+  //  Serial.printf("%d ", rgb[i]);
+  //}
+  //Serial.println();
 
   return result;
 }

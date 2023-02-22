@@ -12,6 +12,33 @@ uint16_t moveRight = 0;
 /* ADC results buffer */
 static uint16_t resultsBuffer[2];
 
+uint8_t TXData = 0;
+uint8_t RXData = 0;
+
+uint8_t rxBuf[RX_BUF_SIZE];
+volatile int rxIndex = 0;
+bool finished = false;
+
+/* UART Configuration Parameter. These are the configuration parameters to
+ * make the eUSCI A UART module to operate with a 115200 baud rate. These
+ * values were calculated using the online calculator that TI provides
+ * at:
+ * http://software-dl.ti.com/msp430/msp430_public_sw/mcu/msp430/MSP430BaudRateConverter/index.html
+ */
+const eUSCI_UART_ConfigV1 uartConfig =
+{
+        EUSCI_A_UART_CLOCKSOURCE_SMCLK,          // SMCLK Clock Source
+        26,                                      // BRDIV = 26
+        0,                                       // UCxBRF = 0
+        111,                                      // UCxBRS = 111
+        EUSCI_A_UART_NO_PARITY,                  // No Parity
+        EUSCI_A_UART_LSB_FIRST,                  // changed from MSB_FIRST
+        EUSCI_A_UART_ONE_STOP_BIT,               // One stop bit
+        EUSCI_A_UART_MODE,                       // UART mode
+        EUSCI_A_UART_OVERSAMPLING_BAUDRATE_GENERATION,  // Oversampling
+        EUSCI_A_UART_8_BIT_LEN                  // 8 bit data length
+};
+
 //----------------------------------------------------------------------
 //----------------------INITIALIZATION FUNCTIONS------------------------
 //----------------------------------------------------------------------
@@ -96,6 +123,22 @@ void _graphicsInit()
     Graphics_clearDisplay(&g_sContext);
 }
 
+void _UARTInit()
+{
+    
+    /* Selecting P3.2 and P3.3 in UART mode */
+    GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P3,
+             GPIO_PIN2 | GPIO_PIN3, GPIO_PRIMARY_MODULE_FUNCTION);
+    
+    /* Configuring UART Module */
+    UART_initModule(EUSCI_A2_BASE, &uartConfig); // Configuring UART module with EUSCI_A2_BASE and custom config: baud rate 112500 with 24MHz clock rate
+    UART_enableModule(EUSCI_A2_BASE); // Enable wart module with EUSCI_A2_BASE initialized before
+
+    /* Enabling interrupt */
+    UART_enableInterrupt(EUSCI_A2_BASE, EUSCI_A_UART_RECEIVE_INTERRUPT); // enable UART-related interrupt sources to receive and transmit
+    Interrupt_enableInterrupt(INT_EUSCIA2); // INT_EUSCIA2 is enabled in the interrupt controller (system-wide)
+}
+
 void _hwInit()
 {
     /* Halting WDT and disabling master interrupts */
@@ -119,9 +162,10 @@ void _hwInit()
     // Initialize and start a one-shot timer
     Timer32_initModule(TIMER32_0_BASE, TIMER32_PRESCALER_1, TIMER32_32BIT, TIMER32_PERIODIC_MODE);
 
-    _graphicsInit();
     _adcInit();
     _gpioInit();
+    _graphicsInit();
+    _UARTInit();
 }
 
 //----------------------------------------------------------------------
@@ -193,4 +237,37 @@ void PORT3_IRQHandler(void)
         //puts("Button Down pressed.\n");
     }
     __enable_irq();
+}
+
+//-----------------------------------------------------
+
+/* EUSCI A2 UART ISR */
+void EUSCIA2_IRQHandler(void)
+{
+    uint32_t status = UART_getEnabledInterruptStatus(EUSCI_A2_BASE);
+
+    if(status & EUSCI_A_UART_RECEIVE_INTERRUPT_FLAG)
+    {
+        rxBuf[rxIndex++] = UART_receiveData(EUSCI_A2_BASE);
+
+        // Check if buffer is full
+        if (rxIndex == RX_BUF_SIZE) {
+            // Disable UART receive interrupt to avoid overlapping more interrupt
+            UART_disableInterrupt(EUSCI_A2_BASE, EUSCI_A_UART_RECEIVE_INTERRUPT);
+
+            // Do something with the received data
+            int i;
+            for (i = 0; i < RX_BUF_SIZE; i++) {
+                printf("%d ",rxBuf[i]);
+                // TODO: put hashedNumber as a private member of a class
+                hashedNumber[i] = rxBuf[i];
+            }
+            printf("\n--------------\n");
+            // Reset buffer index
+            rxIndex = 0;
+            // Enable UART receive interrupt
+            UART_enableInterrupt(EUSCI_A2_BASE, EUSCI_A_UART_RECEIVE_INTERRUPT);
+        }
+    }
+
 }
