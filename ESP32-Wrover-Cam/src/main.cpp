@@ -282,17 +282,15 @@ bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
     }
     return false;
   }
+
+  uint8_t * randomNumber = parseRandomNumber(rgb);
+
+  // Send the data to the MSP
+  Serial1.write(randomNumber, 32);
+
   if (SERIAL_DEBUG)
   {
     Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-    //for (uint32_t i = 0; i < PTRVAL_LEN; i++)
-    //{
-    //  Serial.print(rgb[i]);
-    //}
-    uint8_t * randomNumber = parseRandomNumber(rgb);
-
-    // Send the data to the MSP
-    Serial1.write(randomNumber, 32);
 
     Serial.printf("Data sent: ");
 
