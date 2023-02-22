@@ -14,6 +14,19 @@
 #define BP2_PORT GPIO_PORT_P3
 #define BP2_PIN GPIO_PIN5
 
+/*
+ *  MCLK = HSMCLK = SMCLK = DCO of 24MHz
+ *
+ *               MSP432P401
+ *             -----------------
+ *            |                 |
+ *       RST -|     P3.3/UCA0TXD|----|
+ *            |                 |    |
+ *           -|                 |    |
+ *            |     P3.2/UCA0RXD|----|
+ *            |                 |
+ */
+
 #define RX_BUF_SIZE 32
 
 void _hwInit();
