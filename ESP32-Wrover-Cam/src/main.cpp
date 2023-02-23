@@ -1,565 +1,112 @@
-#include "sha/sha256.h"
 #include "esp_timer.h"
 #include "telegram.h"
+#include "camera.h"
+#include "encryption.h"
 #include <random>
-#include <sstream>
-uint8_t *parseRandomNumber(uint8_t *rgb);
-
-sha256_hasher_t hasher;
 
 WiFiClientSecure client;
 
-uint8_t hashedNumberList[32] = {164, 189, 205, 253, 192, 100, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
-uint8_t *hashedNumber = hashedNumberList;
+sha256_hasher_t hasher;
+uint8_t hashedNumberDefault[32] = {164, 189, 205, 253, 192, 100, 250, 155, 255, 112, 152, 127, 127, 111, 114, 75, 34, 72, 234, 87, 90, 23, 222, 123, 234, 65, 162, 1, 2, 3, 10, 8};
+uint8_t *hashedNumber = hashedNumberDefault;
 
-void initialiseCamera()
-{
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sccb_sda = SIOD_GPIO_NUM;
-  config.pin_sccb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
-
-  // setting frame size, we use fixed resolution even if psram is available
-  config.frame_size = FRAMESIZE_VGA; // (640 x 480);
-  config.jpeg_quality = 16;
-  config.fb_count = 1;
-
-  // Camera init
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK)
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.printf("Camera init failed with error 0x%x", err);
-    }
-    ESP.restart();
-  }
-  else
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("Camera init OK");
-    }
-  }
-}
-void setup()
-{
-  Serial.begin(115200);
-  // To get low level debug if activated in platformio.ini
-  Serial.setDebugOutput(false);
-  Serial1.begin(115200, SERIAL_8N1, RXData, TXData);
+void initWiFi(){
   WiFi.disconnect(); // Disconnect from WiFi network, if WiFi was not disconnected properly last time
   delay(1000);       // wait for WiFi to disconnect
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  if (SERIAL_DEBUG)
-  {
+  if (SERIAL_DEBUG) {
     Serial.print("Connecting to Wifi");
   }
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.print(".");
-    }
+  while (WiFi.status() != WL_CONNECTED) {
+    if (SERIAL_DEBUG) { Serial.print("."); }
     delay(3000);
   }
+  if (SERIAL_DEBUG) { Serial.println("WiFi connnected"); }
+}
 
-  if (SERIAL_DEBUG)
-  {
-    Serial.println();
-    Serial.println("WiFi connected!");
-  }
+void setup() {
+  if (SERIAL_DEBUG) { Serial.begin(115200); }
+
+  Serial.setDebugOutput(false); // To get low level debug if activated in platformio.ini
+
+  Serial1.begin(115200, SERIAL_8N1, RXData, TXData);
+
+  initWiFi();
 
   // Mount SPIFFS file system
-  if (!SPIFFS.begin(true))
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("An Error has occurred while mounting SPIFFS");
-    }
+  if (!SPIFFS.begin(true)) {
+    if (SERIAL_DEBUG) { Serial.println("An Error has occurred while mounting SPIFFS"); }
     ESP.restart();
-  }
-  else
-  {
+  }else{
     delay(500);
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("SPIFFS mounted successfully");
-    }
+    if (SERIAL_DEBUG) { Serial.println("SPIFFS mounted successfully"); }
   }
+
   initialiseCamera();
   client.setInsecure();
 
   hasher = sha256_hasher_new();
 }
 
-bool checkPhoto(fs::FS &fs)
-{
-  File f_pic = fs.open(FILE_PHOTO);
-  if (!f_pic)
-  {
-    return 0;
-  }
-  unsigned int pic_sz = f_pic.size();
-  return (pic_sz > 100);
-}
-
-void capturePhotoSaveSpiffs(camera_fb_t *fb)
-{
-  // pointer
-  bool ok = 0;      // Boolean indicating if the picture has been taken correctly
-  int n_trying = 0; // Int to indicate how many times we tried to catch a picture
-  do
-  {
-    // Take a photo with the camera
-    if (SERIAL_DEBUG)
-    {
-      Serial.printf("Taking a photo... [ %d ]\n", n_trying);
-    }
-
-    if (!fb)
-    {
-      if (SERIAL_DEBUG)
-      {
-        Serial.println("Camera capture failed");
-      }
-      return;
-    }
-
-    // Photo file name
-    if (SERIAL_DEBUG)
-    {
-      Serial.printf("Picture file name: %s\n", FILE_PHOTO);
-    }
-
-    File file = SPIFFS.open(FILE_PHOTO, FILE_WRITE);
-
-    // Insert the data in the photo file
-    if (!file)
-    {
-      if (SERIAL_DEBUG)
-      {
-        Serial.println("Failed to open file in writing mode");
-      }
-    }
-    else
-    {
-      file.write(fb->buf, fb->len); // payload (image), payload length
-      if (SERIAL_DEBUG)
-      {
-        Serial.print("The picture has been saved in ");
-        Serial.print(FILE_PHOTO);
-        Serial.print(" - Size: ");
-        Serial.print(file.size());
-        Serial.println(" bytes");
-      }
-    }
-    // Close the file
-    file.close();
-
-    delay(2000); // delay the saving check otherwise the check will happen too fast
-
-    // check if file has been correctly saved in SPIFFS
-    ok = checkPhoto(SPIFFS);
-
-    if (!ok)
-    {
-      ++n_trying;
-      if (SERIAL_DEBUG)
-      {
-        Serial.println("There was an error opening the photo!");
-        Serial.printf("Retrying... [ %d ]\n", n_trying);
-      }
-    }
-
-  } while (!ok && n_trying < 3);
-}
-
-bool readRGBImage(camera_fb_t *fb, uint8_t *rgb)
-{
-  uint32_t tTimer; // used to time tasks
-
-  // check if psram is available
-  if (!psramFound())
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("ERR: no psram available to store the RGB data");
-    }
-    return false;
-  }
-
-  //   ------ main code for converting an image to RGB data ------
-
-  tTimer = millis(); // get current running time                                                                      // store time that image capture started
-  if (!fb)
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("ERR: failed to capture image from camera");
-    }
-    return false;
-  }
-  else
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.print("Image capture took ");
-      Serial.print(millis() - tTimer);
-      Serial.println(" ms");
-      Serial.printf("Image resolution: %d x %d\n", fb->width, fb->height);
-      Serial.printf("Image size: %d bytes\n", fb->len);
-      Serial.printf("Image format: %d\n", fb->format);
-    }
-  }
-
-  // allocate memory to store the rgb data (in psram, 3 bytes per pixel)
-  if (SERIAL_DEBUG)
-  {
-    Serial.printf("Free psram before rgb data allocated = %d KB \n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
-  }
-  void *ptrVal = NULL;                                // create a pointer for memory location to store the data
-  uint32_t ARRAY_LENGTH = fb->width * fb->height * 3; // calculate memory required to store the RGB data (i.e. number of pixels in the jpg image x 3)
-  if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) < ARRAY_LENGTH)
-  { // check if there is enough psram available
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("ERR: not enough psram to store the RGB data");
-    }
-    return false;
-  }
-
-  ptrVal = heap_caps_malloc(ARRAY_LENGTH, MALLOC_CAP_SPIRAM); // allocate memory for the RGB image
-  // ptrVal = malloc(ARRAY_LENGTH);
-  if (ptrVal == NULL)
-  {
-    Serial.println("ptrVal NULL");
-    return false;
-  }
-  rgb = (uint8_t *)ptrVal; // create the 'rgb' array pointer to the allocated memory space
-  bool jpeg_converted = fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, rgb);
-  if (SERIAL_DEBUG)
-  {
-    Serial.printf("Free psram after rgb data allocated = %d K\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024);
-  }
-
-  // convert the captured jpg image (from frame buffer) to rgb data (store in 'rgb' array)
-  tTimer = millis(); // store time that image conversion process started
-  if (!jpeg_converted)
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("ERR: failed to convert jpeg to rgb888");
-    }
-    return false;
-  }
-  hashedNumber = parseRandomNumber(rgb);
-  String seed_str = String(hashedNumber[0]);
-  int last_i = 0;
-  for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
-  {
-    seed_str += String(hashedNumber[i]);
-    last_i = i;
-  }
-  if (seed_str.length() < 32)
-  {
-    for (int i = 0; seed_str.length() != 32 && atoll((seed_str + String(hashedNumber[i])).c_str()); i++)
-    {
-      seed_str += String(hashedNumber[last_i])[i];
-      last_i++;
-    }
-    srand(atoll(seed_str.c_str()));
-  }
-  Serial1.write(hashedNumber, 32);
-  if (SERIAL_DEBUG)
-  {
-    Serial.printf("Image conversion took %d ms\n", millis() - tTimer);
-    for (int i = 0; i < 32; i++)
-    {
-      Serial.printf("%d", hashedNumber[i]);
-    }
-    Serial.println();
-  }
-
-  heap_caps_free(ptrVal);
-  return true; // rgb data
-
-} // readRGBImage
-
-uint8_t *parseRandomNumber(uint8_t *rgb)
-{
-  Sha256.initHmac(rgb, PTRVAL_LEN);
-  uint8_t *result = Sha256.resultHmac();
-
-  return result;
-}
-
-void loop()
-{
-  // check if the wifi is connected
-  if (WiFi.status() != WL_CONNECTED)
-  {
-    if (SERIAL_DEBUG)
-    {
-      Serial.println("WiFi suddenly disconnected!");
-    }
-
-    WiFi.disconnect(); // reset wifi
-    delay(1000);
-
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    // wait for the wifi to connect
-    if (SERIAL_DEBUG)
-    {
-      Serial.print("Connecting to WiFi");
-    }
-    while (WiFi.status() != WL_CONNECTED)
-    {
-      if (SERIAL_DEBUG)
-      {
-        Serial.print(".");
-      }
-      delay(3000);
-    }
-    if (SERIAL_DEBUG)
-    {
-      Serial.println();
-      Serial.println("WiFi connnected");
-    }
-  }
-  if (SERIAL_DEBUG)
-  {
-    Serial.println("calling update...");
-  }
-  message update = getUpdate();
-  if (SERIAL_DEBUG)
-  {
-    Serial.printf("chat id: %d\n", update.chat_id);
-    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1));
-    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND);
-  }
-  if (Serial1.available() > 0)
-  {
-    String receivedData = Serial1.readString();
-    if (receivedData == "GetPhoto")
-    {
-      camera_fb_t *fb = NULL;
-      fb = esp_camera_fb_get();
-
-      uint8_t *rgb;
-
-      capturePhotoSaveSpiffs(fb);
-      readRGBImage(fb, rgb);
-
-      esp_camera_fb_return(fb);
-    }
-  }
-  // 788963490 is my telegram id to avoid that anyone can get photos
-  if (update.chat_id != 0 && update.text == "/photo" &&
-      (update.user_id == 788963490 || update.user_id == 213298805 || update.user_id == 206312359))
-  {
-    update.reply("Uploading...");
+void genSeed(message *update = NULL){
     camera_fb_t *fb = NULL;
     fb = esp_camera_fb_get();
 
     uint8_t *rgb;
 
     capturePhotoSaveSpiffs(fb);
-    sendCameraPhoto(update.chat_id, fb);
+    if (update != NULL) { sendCameraPhoto(update->chat_id, fb); }
     readRGBImage(fb, rgb);
 
     esp_camera_fb_return(fb);
-  }
-  else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND)
-  {
-    long int min = 0;
-    long int max = 100;
-    bool max_is_zero = false;
-    char *pEnd;
-    bool respond = true;
-    if (update.text.length() > 4)
-    {
-      long int min_tmp, max_tmp;
-      // to move the pointer to the beginning of the numbers
-      min_tmp = strtol(update.text.c_str() + sizeof(NUMBER_COMMAND) / sizeof(const char), &pEnd, 10);
-      Serial.println(min_tmp);
-      if (*(pEnd + 1) == '0' && *(pEnd + 2) == '\0')
-      {
-        max_is_zero = true;
-      }
-      max_tmp = strtol(pEnd, NULL, 10);
-      Serial.print("Max ");
-      Serial.println(max_tmp);
-      if (min_tmp == 0)
-      {
-        update.reply("Invalid syntax: correct syntax is /num min max");
-        respond = false;
-      }
-      else if (max_tmp == 0 && !max_is_zero)
-      {
-        max = min_tmp;
-      }
-      else
-      {
-        min = min_tmp;
-        max = max_tmp;
-      }
-    }
-    if (respond && min > max)
-    {
-      update.reply("Min value can't be bigger than max value");
-      respond = false;
-    }
-    if (respond)
-    {
-      std::uniform_int_distribution<int> distr(min, max);
-      update.reply(String(min + rand() % (max - min + 1)));
+}
+
+void checkReceiveChannel(){
+  if (Serial1.available() > 0) {
+    String receivedData = Serial1.readString();
+    if (receivedData == "GetPhoto") {
+      genSeed();
     }
   }
-  else if (update.chat_id != 0 && update.text == GEN_COMMAND)
-  {
-    String seed_str = String(hashedNumber[0]);
-    int last_i = 0;
-    for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++)
-    {
-      seed_str += String(hashedNumber[i]);
-      last_i = i;
-    }
-    if (seed_str.length() < 32)
-    {
-      for (int i = 0; seed_str.length() != 32 && i < String(hashedNumber[last_i]).length(); i++)
-      {
-        seed_str += String(hashedNumber[last_i])[i];
-        last_i++;
-      }
-    }
-    update.reply(String("Key generated: ") + seed_str);
+}
+
+void telegramRequest(){
+  message update = getUpdate(); // check for new telegram messages
+
+  if (SERIAL_DEBUG) {
+    Serial.printf("chat id: %d\n", update.chat_id);
+    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1));
+    Serial.println(update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND);
   }
-  else if (update.chat_id != 0 && update.text.substring(0, sizeof(ENCRYPTION_COMMAND) / sizeof(const char) - 1) == ENCRYPTION_COMMAND)
-  {
-    unsigned char plaintext[CIPHERTEXT_SIZE];
-    unsigned char ciphertext[CIPHERTEXT_SIZE];
 
-    const char *actual_pos = update.text.c_str();
-    actual_pos += sizeof(ENCRYPTION_COMMAND) / sizeof(const char);
-    if (update.text.length() < (sizeof(ENCRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
-    {
-      update.reply(String("Invalid syntax, correct syntax: /crypt KEY(long 32 char) message"));
-      return;
-    }
-    unsigned char key[32];
-    for (int i = 0; i < 32; i++, actual_pos++)
-    {
-      key[i] = *actual_pos;
-    }
-
-    actual_pos++;
-    int plain_len = 0;
-    for (int i = 0; i < PLAINTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
-    {
-      plaintext[i] = *actual_pos;
-    }
-    Serial.println(plain_len);
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    if (plain_len % 16 != 0)
-    {
-      int padding_len = 16 - plain_len % 16;
-      for (int i = plain_len; i < padding_len; i++)
-      {
-        plaintext[i] = (char)padding_len;
-      }
-      plain_len += padding_len;
-    }
-    plaintext[plain_len] = '\0';
-
-    // set the AES key and IV
-    int cipher_len = ((plain_len) / 16);
-    if ((plain_len) % 16 != 0)
-    {
-      cipher_len += 1;
-    }
-    Serial.println(plain_len);
-    cipher_len *= 32;
-    mbedtls_aes_setkey_enc(&aes, key, 256);
-    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_ENCRYPT, plaintext, ciphertext);
-    mbedtls_aes_free(&aes);
-    std::stringstream ss;
-    ss << "Encrypted message: ";
-
-    // Set the output stream to print in hexadecimal format
-    ss << std::hex;
-
-    // Iterate through the ciphertext array and add each byte to the stringstream
-    for (size_t i = 0; i < cipher_len; i++)
-    {
-      ss << static_cast<unsigned>(ciphertext[i]);
-    }
-    ss << '\0';
-    update.reply(String(ss.str().c_str()));
+  // 788963490 is my telegram id to avoid that anyone can get photos
+  if (update.chat_id != 0 && update.text == "/photo" && (update.user_id == 788963490 || update.user_id == 213298805 || update.user_id == 206312359)) {
+    update.reply("Uploading...");
+    genSeed(&update);
+  } else if (update.chat_id != 0 && update.text.substring(0, 4) == NUMBER_COMMAND) {
+    numberCommand(&update);
+  } else if (update.chat_id != 0 && update.text == GEN_COMMAND) {
+    genCommand(&update, hashedNumber);
+  } else if (update.chat_id != 0 && update.text.substring(0, sizeof(ENCRYPTION_COMMAND) / sizeof(const char) - 1) == ENCRYPTION_COMMAND) {
+    cryptMessage(&update);
+  } else if (update.chat_id != 0 && update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND) {
+    decryptMessage(&update);
   }
-  else if (update.chat_id != 0 && update.text.substring(0, sizeof(DECRYPTION_COMMAND) / sizeof(const char) - 1) == DECRYPTION_COMMAND)
-  {
-    mbedtls_aes_context aes;
+}
 
-    mbedtls_aes_init(&aes);
-    unsigned char decrypted[CIPHERTEXT_SIZE];
-    unsigned char ciphertext[CIPHERTEXT_SIZE];
-    const char *actual_pos = update.text.c_str();
-    actual_pos += sizeof(DECRYPTION_COMMAND) / sizeof(const char);
-    if (update.text.length() < (sizeof(DECRYPTION_COMMAND) / sizeof(const char) + 32) || *(actual_pos - 1) != ' ')
-    {
-      update.reply(String("Invalid syntax, correct syntax: /decrypt KEY(long 32 char) message"));
-      return;
-    }
-    unsigned char key[32];
-    for (int i = 0; i < 32; i++, actual_pos++)
-    {
-      key[i] = *actual_pos;
-    }
-    mbedtls_aes_setkey_dec(&aes, key, 256); // set decryption key
-    actual_pos++;
-    int plain_len = 0;
-    for (int i = 0; i < CIPHERTEXT_SIZE && actual_pos != update.text.end(); i++, actual_pos++, plain_len++)
-    {
-      ciphertext[i] = *actual_pos;
-    }
-    plain_len /= 2;
-    // decrypt data
-    mbedtls_aes_crypt_ecb(&aes, MBEDTLS_AES_DECRYPT, ciphertext, decrypted);
-
-    mbedtls_aes_free(&aes);
-    std::stringstream ss;
-    ss << "Decrypted message: ";
-
-    // Set the output stream to print in hexadecimal format
-    ss << std::hex;
-
-    // Iterate through the ciphertext array and add each byte to the stringstream
-    for (size_t i = 0; i < plain_len; i++)
-    {
-      ss << static_cast<unsigned>(decrypted[i]);
-    }
-    ss << '\0';
-    update.reply(String(ss.str().c_str()));
+void loop() {
+  // check if the wifi is connected
+  if (WiFi.status() != WL_CONNECTED) {
+    if (SERIAL_DEBUG) { Serial.println("WiFi suddenly disconnected!"); }
+    initWiFi();
   }
+
+  if (SERIAL_DEBUG) { Serial.println("calling update..."); }
+
+  checkReceiveChannel(); // check if the msp432 has made a request
+
+  telegramRequest(); // check if there are any new messages
+
   delay(200);
 }

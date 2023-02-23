@@ -13,12 +13,9 @@
 #define ENCRYPTION_COMMAND "/crypt"
 #define DECRYPTION_COMMAND "/decrypt"
 
-
-
 extern WiFiClientSecure client;
 
-struct message
-{
+struct message {
     int64_t chat_id = 0;
     int64_t user_id = 0;
     int64_t message_id = 0;
@@ -31,4 +28,6 @@ message send_request(String method, String api_request, String params);
 message getUpdate();
 message sendMessage(int64_t chat_id, String text, String parse_mode = "None");
 message sendCameraPhoto(int64_t chat_id, camera_fb_t *fb);
+void numberCommand(message *update);
+void genCommand(message *update, uint8_t *hashedNumber);
 #endif

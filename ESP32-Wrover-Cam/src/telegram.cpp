@@ -177,3 +177,62 @@ message message::reply(String text, String parse_mode)
 {
   return send_request("POST", "sendMessage", "chat_id=" + String(this->chat_id) + "&text=" + text + "&parse_mode=" + parse_mode + "&reply_to_message" + String(this->message_id));
 }
+
+void numberCommand(message *update){
+  long int min = 0;
+    long int max = 100;
+    bool max_is_zero = false;
+    char *pEnd;
+    bool respond = true;
+    if (update->text.length() > 4) {
+      long int min_tmp, max_tmp;
+      // to move the pointer to the beginning of the numbers
+      min_tmp = strtol(update->text.c_str() + sizeof(NUMBER_COMMAND) / sizeof(const char), &pEnd, 10);
+      Serial.println(min_tmp);
+      if (*(pEnd + 1) == '0' && *(pEnd + 2) == '\0')
+      {
+        max_is_zero = true;
+      }
+      max_tmp = strtol(pEnd, NULL, 10);
+      Serial.print("Max ");
+      Serial.println(max_tmp);
+      if (min_tmp == 0)
+      {
+        update->reply("Invalid syntax: correct syntax is /num min max");
+        respond = false;
+      }
+      else if (max_tmp == 0 && !max_is_zero)
+      {
+        max = min_tmp;
+      }
+      else
+      {
+        min = min_tmp;
+        max = max_tmp;
+      }
+    }
+    if (respond && min > max) {
+      update->reply("Min value can't be bigger than max value");
+      respond = false;
+    }
+    if (respond) {
+      std::uniform_int_distribution<int> distr(min, max);
+      update->reply(String(min + rand() % (max - min + 1)));
+    }
+}
+
+void genCommand(message *update, uint8_t *hashedNumber){
+  String seed_str = String(hashedNumber[0]);
+    int last_i = 0;
+    for (int i = 1; i < 32 && (seed_str + String(hashedNumber[i])).length() < 33; i++) {
+      seed_str += String(hashedNumber[i]);
+      last_i = i;
+    }
+    if (seed_str.length() < 32) {
+      for (int i = 0; seed_str.length() != 32 && i < String(hashedNumber[last_i]).length(); i++) {
+        seed_str += String(hashedNumber[last_i])[i];
+        last_i++;
+      }
+    }
+    update->reply(String("Key generated: ") + seed_str);
+}
