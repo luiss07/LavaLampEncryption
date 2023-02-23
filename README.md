@@ -48,43 +48,45 @@ The project consists in a system that generate seeds using a **Lava Lamp** as a 
 .
 ├── ESP32-Wrover-Cam
 │   ├── include
-│   │   └── README
+│   │   └── ...
 │   ├── platformio.ini
+│   └── src
+│       ├── main.cpp
+│       └── ...
+├── MSP432
+│   ├── Debug
+│   │   └── ...
+│   ├── LcdDriver
+│   │   └── ...
+│   ├── driverLibInstruction.md
+│   ├── libs
+│   │   ├── LavaLampInterface
+│   │   │   └── ...
+│   │   ├── LavaLampInterruptsAndSetup
+│   │   │   └── ...
+│   │   └── shared.h
+│   ├── msp432p401r.cmd
 │   ├── src
-│   │   ├── config.h
-│   │   ├── main.cpp
-│   │   ├── telegram.cpp
-│   │   └── telegram.h
-│   └── test
-│       └── README
-└── MSP432
-    ├── Debug
-    │   └── ...
-    ├── LcdDriver
-    │   └── ...
-    ├── libs
-    │   └── ...
-    ├── msp432p401r.cmd
-    ├── src
-    │   └── main.c
-    ├── startup_msp432p401r_ccs.c
-    ├── system_msp432p401r.c
-    └── targetConfigs
-        └── ...
+│   │   └── main.c
+│   ├── startup_msp432p401r_ccs.c
+│   ├── system_msp432p401r.c
+│   └── targetConfigs
+│       └── ...
+├── README.md
+└── images
+    └── ...
 ```
 
 The ``` ESP32-Wrover-Cam ``` folder contains the code for the ESP32. The code is written in C++ and it uses the Arduino framework. The code is structured in the following way:
 
 - ``` include ``` contains the header files
-- ``` lib ``` contains the libraries used by the project
 - ``` src ``` contains the source files
-- ``` test ``` contains the test files
 
 The ``` MSP432 ``` folder contains the code for the MSP432. The code is written in C and it uses the CCS framework. The code is structured in the following way:
 
 - ``` Debug ``` contains the debug files
 - ``` LcdDriver ``` contains the LCD driver files
-- ``` libs ``` contains the libraries used by the project
+- ``` libs ``` contains the libraries creaded by us used by the project
 - ``` src ``` contains the source files
 - ``` targetConfigs ``` contains the target configuration files
 
